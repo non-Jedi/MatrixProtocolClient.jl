@@ -42,7 +42,7 @@ function register(homeserver_url::String;
     query_params = if guest
         Dict("kind" => "guest")
     else
-        Dict("Kind" => "user")
+        Dict("kind" => "user")
     end
 
     body = Dict{String, Any}()
