@@ -29,6 +29,19 @@ struct MatrixCredentials
     token::String
 end
 
+function MatrixCredentials(json::Dict{String,Any}, homeserver_url::String)
+    MatrixCredentials(homeserver_url, json["access_token"])
+end
+
+struct MatrixRequest{T<:Union{Dict{String,Any}}}
+    method::String
+    endpoint::Array{String,1}
+    credentials::MatrixCredentials
+    body::T
+    query_params::Dict{String,Any}
+    headers::Dict{String,String}
+end
+
 function register(homeserver_url::String;
                   guest::Bool=false,
                   auth::Dict{String, Any}=Dict{String, Any}(),
@@ -37,12 +50,12 @@ function register(homeserver_url::String;
                   password::String="",
                   device_id::String="",
                   initial_device_display_name::String=""
-                  )::Dict{String, Any}
+                  )::MatrixRequest{Dict{String,Any}}
 
     query_params = if guest
-        Dict("kind" => "guest")
+        Dict{String,Any}("kind" => "guest")
     else
-        Dict("kind" => "user")
+        Dict{String,Any}("kind" => "user")
     end
 
     body = Dict{String, Any}()
@@ -65,29 +78,24 @@ function register(homeserver_url::String;
 
     temp_creds = MatrixCredentials(homeserver_url, "")
     endpoint = ["register"]
-    call_endpoint("POST", endpoint, temp_creds, body=body,
-                  query_params=query_params)
+    MatrixRequest("POST", endpoint, temp_creds, body, query_params,
+                  Dict{String,String}())
 end
 
-function call_endpoint(method::String, endpoint::Array{String, 1},
-                       creds::MatrixCredentials;
-                       body::Dict{String, Any}=Dict{String, Any}(),
-                       query_params::Dict{String, String}=Dict{String, String}(),
-                       headers::Dict{String, String}=Dict{String, String}(),
-                       )::Dict{String, Any}
-    path = "/" * join(cat(1, BASE_PATH, endpoint), "/")
-    url = HTTP.URL(creds.homeserver_url, path=path, query=query_params)
+function matrix_send(request::MatrixRequest{Dict{String,Any}})::Dict{String,Any}
+    path = "/" * join(cat(1, BASE_PATH, request.endpoint), "/")
+    url = HTTP.URL(request.credentials.homeserver_url, path=path,
+                   query=request.query_params)
 
-    if length(creds.token) > 0
-        headers["Authorization"] = "Bearer " * creds.token
+    if length(request.credentials.token) > 0
+        request.headers["Authorization"] = "Bearer " * request.credentials.token
     end
-    if ! haskey(headers, "Content-Type")
-        headers["Content-Type"] = "application/json"
+    if ! haskey(request.headers, "Content-Type")
+        request.headers["Content-Type"] = "application/json"
     end
 
-    body_dump = JSON.json(body)
-
-    response = HTTP.post(url, body=body_dump, headers=headers)
+    json_body = JSON.json(request.body)
+    response = HTTP.post(url, body=json_body, headers=request.headers)
     JSON.parse(String(response))
 end
 
