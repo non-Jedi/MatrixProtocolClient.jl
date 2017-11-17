@@ -22,7 +22,9 @@ import HTTP
 import JSON
 import Base.Enums
 
-BASE_PATH = ["_matrix"; "client"; "r0"]
+const BASE_PATH = Array{String,1}(["_matrix"; "client"; "r0"])
+
+QueryParamsTypes = Union{String, Array{String,1}}
 
 struct MatrixCredentials
     homeserver_url::String
@@ -38,13 +40,13 @@ struct MatrixRequest{T<:Union{Dict{String,Any}}}
     endpoint::Array{String,1}
     credentials::MatrixCredentials
     body::T
-    query_params::Dict{String,Any}
+    query_params::Dict{String,QueryParamsTypes}
     headers::Dict{String,String}
 end
 
 function register(homeserver_url::String;
                   guest::Bool=false,
-                  auth::Dict{String, Any}=Dict{String, Any}(),
+                  auth::Dict{String,Any}=Dict{String,Any}(),
                   bind_email::Bool=false,
                   username::String="",
                   password::String="",
@@ -53,31 +55,33 @@ function register(homeserver_url::String;
                   )::MatrixRequest{Dict{String,Any}}
 
     query_params = if guest
-        Dict{String,Any}("kind" => "guest")
+        Dict{String,QueryParamsTypes}("kind" => "guest")
     else
-        Dict{String,Any}("kind" => "user")
+        Dict{String,QueryParamsTypes}("kind" => "user")
     end
 
-    body = Dict{String, Any}()
-    body["auth"] = auth
+    body = Dict{String,Any}()
+    if length(auth) > 0
+        body["auth"] = auth
+    end
     if bind_email
         body["bind_email"] = true
     end
-    if length(username) > 0
+    if username != ""
         body["username"] = username
     end
-    if length(password) > 0
+    if password != ""
         body["password"] = password
     end
-    if length(device_id) > 0
+    if device_id != ""
         body["device_id"] = device_id
     end
-    if length(initial_device_display_name) > 0
+    if initial_device_display_name != ""
         body["initial_device_display_name"] = initial_device_display_name
     end
 
     temp_creds = MatrixCredentials(homeserver_url, "")
-    endpoint = ["register"]
+    endpoint = Array{String,1}(["register"])
     MatrixRequest("POST", endpoint, temp_creds, body, query_params,
                   Dict{String,String}())
 end
@@ -95,7 +99,17 @@ function matrix_send(request::MatrixRequest{Dict{String,Any}})::Dict{String,Any}
     end
 
     json_body = JSON.json(request.body)
-    response = HTTP.post(url, body=json_body, headers=request.headers)
+    if "POST" == request.method
+        response = HTTP.post(url, body=json_body,
+                             headers=request.headers)::HTTP.Response
+    elseif "GET" == request.method
+        response = HTTP.get(url, body=json_body,
+                            headers=request.headers)::HTTP.Response
+    elseif "PUT" == request.method
+        response = HTTP.put(url, body=json_body,
+                            headers=request.headers)::HTTP.Response
+    end
+
     JSON.parse(String(response))
 end
 
