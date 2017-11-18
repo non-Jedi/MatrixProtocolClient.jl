@@ -25,18 +25,19 @@ import Base.Enums
 const BASE_PATH = Array{String,1}(["_matrix"; "client"; "r0"])
 
 QueryParamsTypes = Union{String, Array{String,1}}
+Enums.@enum HttpMethod HTTPget HTTPput HTTPpost
 
 struct MatrixCredentials
     homeserver_url::String
     token::String
 end
 
-function MatrixCredentials(json::Dict{String,Any}, homeserver_url::String)
+function MatrixCredentials(homeserver_url::String, json::Dict{String,Any})
     MatrixCredentials(homeserver_url, json["access_token"])
 end
 
 struct MatrixRequest{T<:Union{Dict{String,Any}}}
-    method::String
+    method::HttpMethod
     endpoint::Array{String,1}
     credentials::MatrixCredentials
     body::T
@@ -64,9 +65,7 @@ function register(homeserver_url::String;
     if length(auth) > 0
         body["auth"] = auth
     end
-    if bind_email
-        body["bind_email"] = true
-    end
+    body["bind_email"] = bind_email
     if username != ""
         body["username"] = username
     end
@@ -82,12 +81,48 @@ function register(homeserver_url::String;
 
     temp_creds = MatrixCredentials(homeserver_url, "")
     endpoint = Array{String,1}(["register"])
-    MatrixRequest("POST", endpoint, temp_creds, body, query_params,
-                  Dict{String,String}())
+    MatrixRequest(HTTPpost, endpoint, temp_creds,
+                  body, query_params, Dict{String,String}())
+end
+
+function login(homeserver_url::String, login_type::String;
+               user::String="", password::String="",
+               medium::String="", address::String="",
+               token::String="",
+               device_id::String="", initial_device_display_name::String=""
+               )::MatrixRequest{Dict{String,Any}}
+    body = Dict{String,Any}()
+    body["type"] = login_type
+    if user != ""
+        body["user"] = user
+    end
+    if password != ""
+        body["password"] = password
+    end
+    if medium != ""
+        body["medium"] = medium
+    end
+    if address != ""
+        body["address"] = address
+    end
+    if token != ""
+        body["token"] = token
+    end
+    if device_id != ""
+        body["device_id"] = device_id
+    end
+    if initial_device_display_name != ""
+        body["initial_device_display_name"] = initial_device_display_name
+    end
+
+    temp_creds = MatrixCredentials(homeserver_url, "")
+    endpoint = Array{String,1}(["login"])
+    MatrixRequest(HTTPpost, endpoint, temp_creds, body,
+                  Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
 function matrix_send(request::MatrixRequest{Dict{String,Any}})::Dict{String,Any}
-    path = "/" * join(cat(1, BASE_PATH, request.endpoint), "/")
+    path = "/" * join(cat(1, BASE_PATH, request.endpoint)::Array{String,1}, "/")
     url = HTTP.URL(request.credentials.homeserver_url, path=path,
                    query=request.query_params)
 
@@ -99,15 +134,15 @@ function matrix_send(request::MatrixRequest{Dict{String,Any}})::Dict{String,Any}
     end
 
     json_body = JSON.json(request.body)
-    if "POST" == request.method
-        response = HTTP.post(url, body=json_body,
-                             headers=request.headers)::HTTP.Response
-    elseif "GET" == request.method
-        response = HTTP.get(url, body=json_body,
-                            headers=request.headers)::HTTP.Response
-    elseif "PUT" == request.method
-        response = HTTP.put(url, body=json_body,
-                            headers=request.headers)::HTTP.Response
+    response::HTTP.Response = if HTTPpost == request.method
+        HTTP.post(url, body=json_body, headers=request.headers)::HTTP.Response
+    elseif HTTPget == request.method
+        HTTP.get(url, body=json_body, headers=request.headers)::HTTP.Response
+    elseif HTTPput == request.method
+        HTTP.put(url, body=json_body, headers=request.headers)::HTTP.Response
+    else
+        # This can't happen since all enum cases are handled above
+        HTTP.Response(400, "{}")::HTTP.Response
     end
 
     JSON.parse(String(response))
