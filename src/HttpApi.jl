@@ -22,6 +22,9 @@ import HTTP
 import JSON
 import Base.Enums
 
+export send, login, register
+export HTTPget, HTTPput, HTTPpost
+
 const BASE_PATH = Array{String,1}(["_matrix"; "client"; "r0"])
 
 QueryParamsTypes = Union{String, Array{String,1}}
@@ -121,7 +124,7 @@ function login(homeserver_url::String, login_type::String;
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
-function matrix_send(request::MatrixRequest{Dict{String,Any}})::Dict{String,Any}
+function send(request::MatrixRequest{Dict{String,Any}})::Dict{String,Any}
     path = "/" * join(cat(1, BASE_PATH, request.endpoint)::Array{String,1}, "/")
     url = HTTP.URL(request.credentials.homeserver_url, path=path,
                    query=request.query_params)
