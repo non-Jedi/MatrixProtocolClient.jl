@@ -22,14 +22,23 @@ import HTTP
 import JSON
 import Base.Enums
 
-export send, login, register
+export register, login, send_state, send_event, redact_event, matrix_send
 export HTTPget, HTTPput, HTTPpost
+export publicvisibility, privatevisibility
 
+"""
+This matrix SDK uses the [r0.3.0 version of the matrix spec exclusively](
+https://matrix.org/docs/spec/client_server/r0.3.0.html)
+"""
 const BASE_PATH = Array{String,1}(["_matrix"; "client"; "r0"])
 
+"Query parameters can be either a string or multiple strings"
 QueryParamsTypes = Union{String, Array{String,1}}
+
+"Enum for the valid HTTP methods used to send matrix requests"
 Enums.@enum HttpMethod HTTPget HTTPput HTTPpost
 
+"Struct with data needed to auth with matrix server"
 struct MatrixCredentials
     homeserver_url::String
     token::String
@@ -39,6 +48,7 @@ function MatrixCredentials(homeserver_url::String, json::Dict{String,Any})
     MatrixCredentials(homeserver_url, json["access_token"])
 end
 
+"Struct with data needed to make a matrix request"
 struct MatrixRequest{T<:Union{Dict{String,Any}}}
     method::HttpMethod
     endpoint::Array{String,1}
@@ -48,14 +58,26 @@ struct MatrixRequest{T<:Union{Dict{String,Any}}}
     headers::Dict{String,String}
 end
 
-function register(homeserver_url::String;
-                  guest::Bool=false,
-                  auth::Dict{String,Any}=Dict{String,Any}(),
+"""
+    register(homeserver_url[, guest[, auth]]; <keyword arguments>)
+
+Return MatrixRequest for calling POST `/register`.
+
+# Arguments
+- `homeserver_url::String`: URL of homeserver to register with.
+- `guest::Bool=false`: whether to register as a guest user.
+- `auth::Dict{String,Any}`: additional auth info for user-interactive auth.
+- `bind_email::Bool`=false: whether to bind email used for auth to Matrix ID.
+- `username::String`: localpart of the desired Matrix ID.
+- `password::String`: desired password for the account.
+- `device_id::String`: ID of the client device.
+- `initial_device_display_name::String`: display name for newly created device.
+"""
+function register(homeserver_url::String, guest::Bool=false,
+                  auth::Dict{String,Any}=Dict{String,Any}();
                   bind_email::Bool=false,
-                  username::String="",
-                  password::String="",
-                  device_id::String="",
-                  initial_device_display_name::String=""
+                  username::String="", password::String="",
+                  device_id::String="", initial_device_display_name::String=""
                   )::MatrixRequest{Dict{String,Any}}
 
     query_params = if guest
@@ -88,10 +110,26 @@ function register(homeserver_url::String;
                   body, query_params, Dict{String,String}())
 end
 
-function login(homeserver_url::String, login_type::String;
-               user::String="", password::String="",
-               medium::String="", address::String="",
+"""
+    login(homeserver_url, login_type[, user[, password]]; <keyword arguments>)
+
+Return MatrixRequest for calling POST `/login`.
+
+# Arguments
+- `homeserver_url::String`: URL of homeserver to login to.
+- `login_type::String`: login type being used (e.g. `m.login.password`).
+- `user::String`: user ID or localpart to login.
+- `password::String`: user's password if `login_type` is `m.login.password`.
+- `token::String`: the login token if `login_type` is `m.login.token`.
+- `medium::String`: medium of identifier if logging in with 3pid (must be "email").
+- `address::String`: 3pid for the user (supplied instead of `user`).
+- `device_id::String`: ID of the client device.
+- `initial_device_display_name::String`: display name for newly created device.
+"""
+function login(homeserver_url::String, login_type::String,
+               user::String="", password::String="";
                token::String="",
+               medium::String="", address::String="",
                device_id::String="", initial_device_display_name::String=""
                )::MatrixRequest{Dict{String,Any}}
     body = Dict{String,Any}()
@@ -124,7 +162,85 @@ function login(homeserver_url::String, login_type::String;
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
-function send(request::MatrixRequest{Dict{String,Any}})::Dict{String,Any}
+"""
+    send_state(credentials, roomid, eventtype, body, statekey="")
+
+Return `MatrixRequest` calling PUT `/rooms/{roomId}/state/{eventType}/{stateKey}`
+
+Calls to this endpoint send a state event of `eventtype` to room, `roomid`, with
+body, `body`. State events are overwritten by server if `roomid`, `eventtype`,
+and `statekey` all match an existing state event.
+"""
+function send_state(credentials::MatrixCredentials, roomid::String,
+                    eventtype::String, body::Dict{String,Any};
+                    statekey::String=""
+                   )::MatrixRequest{Dict{String,Any}}
+    endpoint = Array{String,1}(["rooms"; roomid; "state"; eventtype; statekey])
+    MatrixRequest(HTTPput, endpoint, credentials, body,
+                  Dict{String,QueryParamsTypes}(), Dict{String,String}())
+end
+
+"""
+    send_event(credentials, roomid, eventtype, body, txnid)
+
+Return `MatrixRequest` calling PUT `/rooms/{roomId}/send/{eventType}/{txnId}`
+
+Calls to this endpoint send an event of `eventtype` to room, `roomid`, with
+body, `body`. The `txnid` should be a string unique to the given credentials to
+ensure idempotency.
+"""
+function send_event(credentials::MatrixCredentials, roomid::String,
+                    eventtype::String, body::Dict{String,Any}, txnid::String
+                    )::MatrixRequest{Dict{String,Any}}
+    endpoint = Array{String,1}(["rooms"; roomid; "send"; eventtype; txnid])
+    MatrixRequest(HTTPput, endpoint, credentials, body,
+                  Dict{String,QueryParamsTypes}(), Dict{String,String}())
+end
+
+"""
+    redact_event(credentials, roomid, eventid, txnid, reason="")
+
+Return `MatrixRequest` for calling PUT `/rooms/{roomId}/redact/{eventId}/{txnId}`
+
+Calls to this endpoint "redact" the message, `eventid` from room `roomid` for
+`reason`. A redacted message should be stripped by server of all keys other
+than:
+
+- "event_id"
+- "type"
+- "room_id"
+- "sender"
+- "state_key"
+- "prev_content"
+- "content"
+
+The `txnid` should be a string unique to the given credentials to ensure
+idempotency.
+"""
+function redact_event(credentials::MatrixCredentials, roomid::String,
+                      eventid::String, txnid::String, reason::String=""
+                      )::MatrixRequest{Dict{String,Any}}
+    endpoint = Array{String,1}(["rooms"; roomid; "redact"; eventid; txnid])
+    body = if reason == ""
+        Dict{String,Any}()
+    else
+        body = Dict{String,Any}("reason" => reason)
+    end
+    MatrixRequest(HTTPput, endpoint, credentials, body,
+                  Dict{String,QueryParamsTypes}(), Dict{String,String}())
+end
+
+Enums.@enum RoomVisibility publicvisibility privatevisibility
+
+"""
+    matrix_send(request::MatrixRequest)::Dict{String,Any}
+
+Returns the body from making the specified matrix request.
+
+If request doesn't specify a `Content-Type` header, this function will add
+one with value `application/json`.
+"""
+function matrix_send(request::MatrixRequest{Dict{String,Any}})::Dict{String,Any}
     path = "/" * join(cat(1, BASE_PATH, request.endpoint)::Array{String,1}, "/")
     url = HTTP.URL(request.credentials.homeserver_url, path=path,
                    query=request.query_params)
