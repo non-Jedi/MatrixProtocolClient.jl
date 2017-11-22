@@ -16,15 +16,22 @@ You should have received a copy of the GNU General Public License along with
 MatrixClient.jl. If not, see <http://www.gnu.org/licenses/>.
 =#
 
+__precompile__()
 module HttpApi
 
 import HTTP
 import JSON
 import Base.Enums
 
-export register, login, send_state, send_event, redact_event, matrix_send
+# Export all necessary functions
+export MatrixCredentials
+export register, login, send_state, send_event, redact_event, create_room
+export matrix_send
+
+# Export enums needed to call functions
 export HTTPget, HTTPput, HTTPpost
 export publicvisibility, privatevisibility
+export private_chat, trusted_private_chat, public_chat
 
 """
 This matrix SDK uses the [r0.3.0 version of the matrix spec exclusively](
@@ -61,7 +68,7 @@ end
 """
     register(homeserver_url[, guest[, auth]]; <keyword arguments>)
 
-Return MatrixRequest for calling POST `/register`.
+Return MatrixRequest calling POST `/register`.
 
 # Arguments
 - `homeserver_url::String`: URL of homeserver to register with.
@@ -87,22 +94,12 @@ function register(homeserver_url::String, guest::Bool=false,
     end
 
     body = Dict{String,Any}()
-    if length(auth) > 0
-        body["auth"] = auth
-    end
+    setvalueiflength!(body, "auth", auth)
     body["bind_email"] = bind_email
-    if username != ""
-        body["username"] = username
-    end
-    if password != ""
-        body["password"] = password
-    end
-    if device_id != ""
-        body["device_id"] = device_id
-    end
-    if initial_device_display_name != ""
-        body["initial_device_display_name"] = initial_device_display_name
-    end
+    setvalueiflength!(body, "username", username)
+    setvalueiflength!(body, "password", password)
+    setvalueiflength!(body, "device_id", device_id)
+    setvalueiflength!(body, "initial_device_display_name", initial_device_display_name)
 
     temp_creds = MatrixCredentials(homeserver_url, "")
     endpoint = Array{String,1}(["register"])
@@ -113,7 +110,7 @@ end
 """
     login(homeserver_url, login_type[, user[, password]]; <keyword arguments>)
 
-Return MatrixRequest for calling POST `/login`.
+Return MatrixRequest calling POST `/login`.
 
 # Arguments
 - `homeserver_url::String`: URL of homeserver to login to.
@@ -134,27 +131,13 @@ function login(homeserver_url::String, login_type::String,
                )::MatrixRequest{Dict{String,Any}}
     body = Dict{String,Any}()
     body["type"] = login_type
-    if user != ""
-        body["user"] = user
-    end
-    if password != ""
-        body["password"] = password
-    end
-    if medium != ""
-        body["medium"] = medium
-    end
-    if address != ""
-        body["address"] = address
-    end
-    if token != ""
-        body["token"] = token
-    end
-    if device_id != ""
-        body["device_id"] = device_id
-    end
-    if initial_device_display_name != ""
-        body["initial_device_display_name"] = initial_device_display_name
-    end
+    setvalueiflength!(body, "user", user)
+    setvalueiflength!(body, "password", password)
+    setvalueiflength!(body, "medium", medium)
+    setvalueiflength!(body, "address", address)
+    setvalueiflength!(body, "token", token)
+    setvalueiflength!(body, "device_id", device_id)
+    setvalueiflength!(body, "initial_device_display_name", initial_device_display_name)
 
     temp_creds = MatrixCredentials(homeserver_url, "")
     endpoint = Array{String,1}(["login"])
@@ -221,16 +204,94 @@ function redact_event(credentials::MatrixCredentials, roomid::String,
                       eventid::String, txnid::String, reason::String=""
                       )::MatrixRequest{Dict{String,Any}}
     endpoint = Array{String,1}(["rooms"; roomid; "redact"; eventid; txnid])
-    body = if reason == ""
-        Dict{String,Any}()
-    else
-        body = Dict{String,Any}("reason" => reason)
-    end
+    body = Dict{String,Any}()
+    setvalueiflength!(body, "reason", reason)
     MatrixRequest(HTTPput, endpoint, credentials, body,
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
-Enums.@enum RoomVisibility publicvisibility privatevisibility
+Enums.@enum RoomVisibility publicvisibility privatevisibility novisibility
+Enums.@enum RoomPreset private_chat trusted_private_chat public_chat no_preset
+
+"""
+    create_room(credentials[, preset::RoomPreset]; <keyword arguments>)
+
+Return `MatrixRequest` for calling POST `/createRoom`
+
+Calls to this endpoint create a room using `credentials`.
+
+# Arguments
+- `preset::RoomPreset`: room settings preset (automatically sets other
+  settings). Must be one of `private_chat`, `trusted_private_chat`, or
+  `public_chat` if set.
+- `room_alias_name::String`: localpart for desired room alias.
+- `name::String`: name for `m.room.name` event in new room.
+- `topic::String`: topic for `m.room.topic` event in new room.
+- `visibility::RoomVisibility`: one of `publicvisibility` or `privatevisibility`.
+  specifies whether room will be shown in published room list.
+- `invite::Array{String,1}`: array of user ids to invite to the room.
+- `invite_3pid::Array{Dict{String,String}}`: array of objects representing 3pids
+  to invite to the room. Object will have following keys:
+  - "id_server": the hostname+port of the identity server used for 3pid lookups.
+  - "medium": the kind of address being passed in address field.
+  - "address": the invitee's third party identifier.
+- `creation_content::Dict{String,Any}`: extra keys to be added to the content of
+  `m.room.create` event. Only key that can be used right now is "creator".
+- `initial_state::Array{Dict{String,Any}}`: an array of state events to set in
+  the new room. Objects in array should be dicts with keys:
+  - "type"
+  - "state_key"
+  - "content" => ::Dict{String,Any}
+- `is_direct::Bool=false`: whether the "is_direct" flag should be set.
+"""
+function create_room(credentials::MatrixCredentials,
+                     preset::RoomPreset=no_preset;
+                     room_alias_name::String="",
+                     name::String="", topic::String="",
+                     visibility::RoomVisibility=novisibility,
+                     invite::Array{String,1}=Array{String,1}(),
+                     invite_3pid::Array{Dict{String,String},1}=
+                         Array{Dict{String,String},1}(),
+                     creation_content::Dict{String,Any}=Dict{String,Any}(),
+                     initial_state::Array{Dict{String,Any}}=
+                         Array{Dict{String,Any}}(),
+                     is_direct::Bool=false
+                     )::MatrixRequest{Dict{String,Any}}
+    body = Dict{String,Any}()
+    # Deal with enums first
+    if visibility != novisibility
+        body["visibility"] = if visibility == publicvisibility
+            "public"
+        elseif visibility == privatevisibility
+            "private"
+        else
+            "private"
+        end
+    end
+    if preset != no_preset
+        body["preset"] = if preset == private_chat
+            "private_chat"
+        elseif preset == trusted_private_chat
+            "trusted_private_chat"
+        elseif preset == public_chat
+            "public_chat"
+        else
+            "private_chat"
+        end
+    end
+    # Then deal with rest of body parameters
+    setvalueiflength!(body, "room_alias_name", room_alias_name)
+    setvalueiflength!(body, "name", name)
+    setvalueiflength!(body, "topic", topic)
+    setvalueiflength!(body, "invite", invite)
+    setvalueiflength!(body, "invite_3pid", invite_3pid)
+    setvalueiflength!(body, "creation_content", creation_content)
+    body["is_direct"] = is_direct
+
+    endpoint = Array{String,1}(["createRoom"])
+    MatrixRequest(HTTPpost, endpoint, credentials, body,
+                  Dict{String,QueryParamsTypes}(), Dict{String,String}())
+end
 
 """
     matrix_send(request::MatrixRequest)::Dict{String,Any}
@@ -265,6 +326,13 @@ function matrix_send(request::MatrixRequest{Dict{String,Any}})::Dict{String,Any}
     end
 
     JSON.parse(String(response))
+end
+
+"Sets `body[key]` to `key_value` if length(key_value) > 0"
+function setvalueiflength!(body::Dict{String,Any}, key::String, key_value::Any)
+    if length(key_value) > 0
+        body[key] = key_value
+    end
 end
 
 end # module
