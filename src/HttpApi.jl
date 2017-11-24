@@ -25,12 +25,12 @@ import Base.Enums
 
 # Export all necessary functions
 export MatrixCredentials
-export register, login, send_state, send_event, redact_event, create_room
+export register, login, sendstate, sendevent, redactevent, createroom
 export matrix_send
 
 # Export enums needed to call functions
 export HTTPget, HTTPput, HTTPpost
-export publicvisibility, privatevisibility
+export public, private
 export private_chat, trusted_private_chat, public_chat
 
 """
@@ -85,7 +85,7 @@ function register(homeserver_url::String, guest::Bool=false,
                   bind_email::Bool=false,
                   username::String="", password::String="",
                   device_id::String="", initial_device_display_name::String=""
-                  )::MatrixRequest{Dict{String,Any}}
+)::MatrixRequest{Dict{String,Any}}
 
     query_params = if guest
         Dict{String,QueryParamsTypes}("kind" => "guest")
@@ -128,7 +128,7 @@ function login(homeserver_url::String, login_type::String,
                token::String="",
                medium::String="", address::String="",
                device_id::String="", initial_device_display_name::String=""
-               )::MatrixRequest{Dict{String,Any}}
+)::MatrixRequest{Dict{String,Any}}
     body = Dict{String,Any}()
     body["type"] = login_type
     setvalueiflength!(body, "user", user)
@@ -145,8 +145,16 @@ function login(homeserver_url::String, login_type::String,
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
+Enums.@enum EventFormat clientformat federationformat
+
+function newfilter(userid::String,
+                   event_fields::Array{String,1}=Array{String,1}();
+                   format::EventFormat=clientformat,
+)::MatrixRequest{Dict{String,Any}}
+end
+
 """
-    send_state(credentials, roomid, eventtype, body, statekey="")
+    sendstate(credentials, roomid, eventtype, body, statekey="")
 
 Return `MatrixRequest` calling PUT `/rooms/{roomId}/state/{eventType}/{stateKey}`
 
@@ -154,17 +162,17 @@ Calls to this endpoint send a state event of `eventtype` to room, `roomid`, with
 body, `body`. State events are overwritten by server if `roomid`, `eventtype`,
 and `statekey` all match an existing state event.
 """
-function send_state(credentials::MatrixCredentials, roomid::String,
-                    eventtype::String, body::Dict{String,Any};
-                    statekey::String=""
-                   )::MatrixRequest{Dict{String,Any}}
+function sendstate(credentials::MatrixCredentials, roomid::String,
+                   eventtype::String, body::Dict{String,Any};
+                   statekey::String=""
+)::MatrixRequest{Dict{String,Any}}
     endpoint = Array{String,1}(["rooms"; roomid; "state"; eventtype; statekey])
     MatrixRequest(HTTPput, endpoint, credentials, body,
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
 """
-    send_event(credentials, roomid, eventtype, body, txnid)
+    sendevent(credentials, roomid, eventtype, body, txnid)
 
 Return `MatrixRequest` calling PUT `/rooms/{roomId}/send/{eventType}/{txnId}`
 
@@ -172,16 +180,16 @@ Calls to this endpoint send an event of `eventtype` to room, `roomid`, with
 body, `body`. The `txnid` should be a string unique to the given credentials to
 ensure idempotency.
 """
-function send_event(credentials::MatrixCredentials, roomid::String,
+function sendevent(credentials::MatrixCredentials, roomid::String,
                     eventtype::String, body::Dict{String,Any}, txnid::String
-                    )::MatrixRequest{Dict{String,Any}}
+)::MatrixRequest{Dict{String,Any}}
     endpoint = Array{String,1}(["rooms"; roomid; "send"; eventtype; txnid])
     MatrixRequest(HTTPput, endpoint, credentials, body,
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
 """
-    redact_event(credentials, roomid, eventid, txnid, reason="")
+    redactevent(credentials, roomid, eventid, txnid, reason="")
 
 Return `MatrixRequest` for calling PUT `/rooms/{roomId}/redact/{eventId}/{txnId}`
 
@@ -200,9 +208,9 @@ than:
 The `txnid` should be a string unique to the given credentials to ensure
 idempotency.
 """
-function redact_event(credentials::MatrixCredentials, roomid::String,
+function redactevent(credentials::MatrixCredentials, roomid::String,
                       eventid::String, txnid::String, reason::String=""
-                      )::MatrixRequest{Dict{String,Any}}
+)::MatrixRequest{Dict{String,Any}}
     endpoint = Array{String,1}(["rooms"; roomid; "redact"; eventid; txnid])
     body = Dict{String,Any}()
     setvalueiflength!(body, "reason", reason)
@@ -210,11 +218,11 @@ function redact_event(credentials::MatrixCredentials, roomid::String,
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
-Enums.@enum RoomVisibility publicvisibility privatevisibility novisibility
+Enums.@enum RoomVisibility public private novisibility
 Enums.@enum RoomPreset private_chat trusted_private_chat public_chat no_preset
 
 """
-    create_room(credentials[, preset::RoomPreset]; <keyword arguments>)
+    createroom(credentials[, preset::RoomPreset]; <keyword arguments>)
 
 Return `MatrixRequest` for calling POST `/createRoom`
 
@@ -227,7 +235,7 @@ Calls to this endpoint create a room using `credentials`.
 - `room_alias_name::String`: localpart for desired room alias.
 - `name::String`: name for `m.room.name` event in new room.
 - `topic::String`: topic for `m.room.topic` event in new room.
-- `visibility::RoomVisibility`: one of `publicvisibility` or `privatevisibility`.
+- `visibility::RoomVisibility`: one of `public` or `private`.
   specifies whether room will be shown in published room list.
 - `invite::Array{String,1}`: array of user ids to invite to the room.
 - `invite_3pid::Array{Dict{String,String}}`: array of objects representing 3pids
@@ -244,7 +252,7 @@ Calls to this endpoint create a room using `credentials`.
   - "content" => ::Dict{String,Any}
 - `is_direct::Bool=false`: whether the "is_direct" flag should be set.
 """
-function create_room(credentials::MatrixCredentials,
+function createroom(credentials::MatrixCredentials,
                      preset::RoomPreset=no_preset;
                      room_alias_name::String="",
                      name::String="", topic::String="",
@@ -256,28 +264,14 @@ function create_room(credentials::MatrixCredentials,
                      initial_state::Array{Dict{String,Any}}=
                          Array{Dict{String,Any}}(),
                      is_direct::Bool=false
-                     )::MatrixRequest{Dict{String,Any}}
+)::MatrixRequest{Dict{String,Any}}
     body = Dict{String,Any}()
     # Deal with enums first
     if visibility != novisibility
-        body["visibility"] = if visibility == publicvisibility
-            "public"
-        elseif visibility == privatevisibility
-            "private"
-        else
-            "private"
-        end
+        body["visibility"] = string(visibility)
     end
     if preset != no_preset
-        body["preset"] = if preset == private_chat
-            "private_chat"
-        elseif preset == trusted_private_chat
-            "trusted_private_chat"
-        elseif preset == public_chat
-            "public_chat"
-        else
-            "private_chat"
-        end
+        body["preset"] = string(preset)
     end
     # Then deal with rest of body parameters
     setvalueiflength!(body, "room_alias_name", room_alias_name)
