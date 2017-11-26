@@ -1,5 +1,4 @@
-using MatrixClient
 using Base.Test
 
-# write your own tests here
-@test 1 == 2
+println("Starting tests")
+@time @testset "HTTP API" begin include("HttpApi_test.jl") end
