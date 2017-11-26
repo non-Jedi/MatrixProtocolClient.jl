@@ -25,7 +25,7 @@ import Base.Enums
 
 # Export all necessary functions
 export MatrixCredentials
-export register, login, sendstate, sendevent, redactevent, createroom
+export register, login, sendstate, sendevent, redactevent, createroom, joinroom
 export matrix_send
 
 # Export enums needed to call functions
@@ -147,11 +147,13 @@ end
 
 Enums.@enum EventFormat clientformat federationformat
 
+#=
 function newfilter(userid::String,
                    event_fields::Array{String,1}=Array{String,1}();
                    format::EventFormat=clientformat,
 )::MatrixRequest{Dict{String,Any}}
 end
+=#
 
 """
     sendstate(credentials, roomid, eventtype, body, statekey="")
@@ -163,7 +165,7 @@ body, `body`. State events are overwritten by server if `roomid`, `eventtype`,
 and `statekey` all match an existing state event.
 """
 function sendstate(credentials::MatrixCredentials, roomid::String,
-                   eventtype::String, body::Dict{String,Any};
+                   eventtype::String, body::Dict{String,Any},
                    statekey::String=""
 )::MatrixRequest{Dict{String,Any}}
     endpoint = Array{String,1}(["rooms"; roomid; "state"; eventtype; statekey])
@@ -283,6 +285,38 @@ function createroom(credentials::MatrixCredentials,
     body["is_direct"] = is_direct
 
     endpoint = Array{String,1}(["createRoom"])
+    MatrixRequest(HTTPpost, endpoint, credentials, body,
+                  Dict{String,QueryParamsTypes}(), Dict{String,String}())
+end
+
+"""
+    joinroom(credentials, roomidoralias[, thirdpartysigned=Dict{String,Any}()])
+
+Return `MatrixRequest` for calling POST `/join/{roomidoralias}`
+
+Join a room identified by `roomidorials` using `credentials`. `thirdpartysigned`
+is used for joining rooms when invited by a 3pid. It should be formatted as
+follows.
+
+    thirdpartysigned = Dict{String,Any}(
+        "signed" => Dict{String,Any}(
+            "sender" => "@cat:the.hat",
+            "mxid" => @green:eggs.ham",
+            "token" => "<state key of m.third_party_invite event",
+            "signatures" => Dict{String,Any}(
+                "horton.hears" => Dict{String,Any}(
+                    "ed25519:0" => "some9signature"
+                )
+            )
+        )
+    )
+"""
+function joinroom(credentials::MatrixCredentials, roomidoralias::String,
+                  thirdpartysigned::Dict{String,Any}=Dict{String,Any}()
+)::MatrixRequest{Dict{String,Any}}
+    body = Dict{String,Any}()
+    setvalueiflength!(body, "third_party_signed", thirdpartysigned)
+    endpoint = Array{String,1}(["join"; roomidoralias])
     MatrixRequest(HTTPpost, endpoint, credentials, body,
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
