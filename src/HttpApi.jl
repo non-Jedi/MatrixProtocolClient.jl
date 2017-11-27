@@ -124,7 +124,7 @@ Return MatrixRequest calling POST `/login`.
 - `initial_device_display_name::String`: display name for newly created device.
 """
 function login(homeserver_url::String, login_type::String,
-               user::String="", password::String="";
+               password::String="", user::String="";
                token::String="",
                medium::String="", address::String="",
                device_id::String="", initial_device_display_name::String=""

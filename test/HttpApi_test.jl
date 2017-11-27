@@ -85,4 +85,62 @@ end # @test
 end # @test
 
 end # @testset
+
+@testset "login constructor" begin
+creds = MatrixCredentials("https://matrix.org", "")
+
+@test begin
+    r1 = HttpApi.MatrixRequest(HTTPpost, Array{String,1}(["login"]), creds,
+                               Dict{String,Any}("type" => "m.login.password",
+                                                "user" => "username",
+                                                "password" => "password"
+                                                ),
+                               Dict{String,HttpApi.QueryParamsTypes}(),
+                               Dict{String,String}())
+    r2 = login("https://matrix.org", "m.login.password", "password", "username")
+    r1 == r2
+end # @test
+
+@test begin
+    r1 = HttpApi.MatrixRequest(HTTPpost, Array{String,1}(["login"]), creds,
+                               Dict{String,Any}("type" => "m.login.token",
+                                                "token" => "foobar"),
+                               Dict{String,HttpApi.QueryParamsTypes}(),
+                               Dict{String,String}())
+    r2 = login("https://matrix.org", "m.login.token"; token="foobar")
+    r1 == r2
+end # @test
+
+@test begin
+    r1 = HttpApi.MatrixRequest(HTTPpost, Array{String,1}(["login"]), creds,
+                               Dict{String,Any}("type" => "m.login.token",
+                                                "password" => "password",
+                                                "medium" => "email",
+                                                "address" => "test@example.com"),
+                               Dict{String,HttpApi.QueryParamsTypes}(),
+                               Dict{String,String}())
+    r2 = login("https://matrix.org", "m.login.token", "password";
+               medium="email", address="test@example.com")
+    r1 == r2
+end # @test
+
+@test begin
+    r1 = HttpApi.MatrixRequest(HTTPpost, Array{String,1}(["login"]), creds,
+                               Dict{String,Any}("type" => "m.login.token",
+                                                "token" => "foobar",
+                                                "device_id" => "APWOEGIH",
+                                                "initial_device_display_name" =>
+                                                "device name"),
+                               Dict{String,HttpApi.QueryParamsTypes}(),
+                               Dict{String,String}())
+    r2 = login("https://matrix.org", "m.login.token";
+               token="foobar", device_id="APWOEGIH",
+               initial_device_display_name="device name")
+    println(r1)
+    println(r2)
+    r1 == r2
+end # @test
+
+end # @testset
+
 end # @testset
