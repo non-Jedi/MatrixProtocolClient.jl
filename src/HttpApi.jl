@@ -21,6 +21,7 @@ module HttpApi
 
 import HTTP
 import JSON
+import Unmarshal
 import Base.Enums
 
 # Export all necessary functions
@@ -29,7 +30,7 @@ export register, login, sendstate, sendevent, redactevent, createroom, joinroom
 export matrix_send
 
 # Export enums needed to call functions
-export HTTPget, HTTPput, HTTPpost
+export GET, PUT, POST
 export public, private
 export private_chat, trusted_private_chat, public_chat
 
@@ -37,20 +38,27 @@ export private_chat, trusted_private_chat, public_chat
 This matrix SDK uses the [r0.3.0 version of the matrix spec exclusively](
 https://matrix.org/docs/spec/client_server/r0.3.0.html)
 """
-const BASE_PATH = Array{String,1}(["_matrix"; "client"; "r0"])
+const STABLE_BASE_PATH = Array{String,1}(["_matrix"; "client"; "r0"])
+const UNSTABLE_BASE_PATH = Array{String,1}(["_matrix"; "client"; "unstable"])
 
 "Query parameters can be either a string or multiple strings"
 QueryParamsTypes = Union{String, Array{String,1}}
 
 "Enum for the valid HTTP methods used to send matrix requests"
-Enums.@enum HttpMethod HTTPget HTTPput HTTPpost
+Enums.@enum HttpMethod GET PUT POST
+
+"Turn a julia type into a dictionary."
+type2dict(x) = Dict(i => getfield(x, i) for i in fieldnames(x))
+"Turn a julia type into a JSON string."
+marshal(x)::AbstractString = JSON.json(type2dict(x))
+"Turn a JSON string into a julia type."
+unmarshal(s::AbstractString,T::Type) = Unmarshal.unmarshal(T, JSON.parse(s))
 
 "Struct with data needed to auth with matrix server"
 struct MatrixCredentials
     homeserver_url::String
     token::String
 end
-
 function MatrixCredentials(homeserver_url::String, json::Dict{String,Any})
     MatrixCredentials(homeserver_url, json["access_token"])
 end
@@ -103,7 +111,7 @@ function register(homeserver_url::String, guest::Bool=false,
 
     temp_creds = MatrixCredentials(homeserver_url, "")
     endpoint = Array{String,1}(["register"])
-    MatrixRequest(HTTPpost, endpoint, temp_creds,
+    MatrixRequest(POST, endpoint, temp_creds,
                   body, query_params, Dict{String,String}())
 end
 
@@ -141,7 +149,7 @@ function login(homeserver_url::String, login_type::String,
 
     temp_creds = MatrixCredentials(homeserver_url, "")
     endpoint = Array{String,1}(["login"])
-    MatrixRequest(HTTPpost, endpoint, temp_creds, body,
+    MatrixRequest(POST, endpoint, temp_creds, body,
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
@@ -169,7 +177,7 @@ function sendstate(credentials::MatrixCredentials, roomid::String,
                    statekey::String=""
 )::MatrixRequest{Dict{String,Any}}
     endpoint = Array{String,1}(["rooms"; roomid; "state"; eventtype; statekey])
-    MatrixRequest(HTTPput, endpoint, credentials, body,
+    MatrixRequest(PUT, endpoint, credentials, body,
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
@@ -186,7 +194,7 @@ function sendevent(credentials::MatrixCredentials, roomid::String,
                     eventtype::String, body::Dict{String,Any}, txnid::String
 )::MatrixRequest{Dict{String,Any}}
     endpoint = Array{String,1}(["rooms"; roomid; "send"; eventtype; txnid])
-    MatrixRequest(HTTPput, endpoint, credentials, body,
+    MatrixRequest(PUT, endpoint, credentials, body,
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
@@ -216,7 +224,7 @@ function redactevent(credentials::MatrixCredentials, roomid::String,
     endpoint = Array{String,1}(["rooms"; roomid; "redact"; eventid; txnid])
     body = Dict{String,Any}()
     setvalueiflength!(body, "reason", reason)
-    MatrixRequest(HTTPput, endpoint, credentials, body,
+    MatrixRequest(PUT, endpoint, credentials, body,
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
@@ -285,7 +293,7 @@ function createroom(credentials::MatrixCredentials,
     body["is_direct"] = is_direct
 
     endpoint = Array{String,1}(["createRoom"])
-    MatrixRequest(HTTPpost, endpoint, credentials, body,
+    MatrixRequest(POST, endpoint, credentials, body,
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
@@ -317,7 +325,7 @@ function joinroom(credentials::MatrixCredentials, roomidoralias::String,
     body = Dict{String,Any}()
     setvalueiflength!(body, "third_party_signed", thirdpartysigned)
     endpoint = Array{String,1}(["join"; roomidoralias])
-    MatrixRequest(HTTPpost, endpoint, credentials, body,
+    MatrixRequest(POST, endpoint, credentials, body,
                   Dict{String,QueryParamsTypes}(), Dict{String,String}())
 end
 
@@ -330,7 +338,7 @@ If request doesn't specify a `Content-Type` header, this function will add
 one with value `application/json`.
 """
 function matrix_send(request::MatrixRequest{Dict{String,Any}})::Dict{String,Any}
-    path = "/" * join(cat(1, BASE_PATH, request.endpoint)::Array{String,1}, "/")
+    path = "/" * join(cat(1, STABLE_BASE_PATH, request.endpoint)::Array{String,1}, "/")
     url = HTTP.URL(request.credentials.homeserver_url, path=path,
                    query=request.query_params)
 
@@ -342,11 +350,11 @@ function matrix_send(request::MatrixRequest{Dict{String,Any}})::Dict{String,Any}
     end
 
     json_body = JSON.json(request.body)
-    response::HTTP.Response = if HTTPpost == request.method
+    response::HTTP.Response = if POST == request.method
         HTTP.post(url, body=json_body, headers=request.headers)::HTTP.Response
-    elseif HTTPget == request.method
+    elseif GET == request.method
         HTTP.get(url, body=json_body, headers=request.headers)::HTTP.Response
-    elseif HTTPput == request.method
+    elseif PUT == request.method
         HTTP.put(url, body=json_body, headers=request.headers)::HTTP.Response
     else
         # This can't happen since all enum cases are handled above
