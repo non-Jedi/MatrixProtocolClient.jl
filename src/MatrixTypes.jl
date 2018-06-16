@@ -30,10 +30,12 @@ import Missings: Missing
 Maybe{T} = Union{Missing,T}
 
 # These will be needed for long-winded parametric types
-MS = Maybe{AbstractString}
-MI = Maybe{Integer}
-MF = Maybe{AbstractFloat}
+MS = Maybe{String}
+MI = Maybe{Int64}
+MF = Maybe{Float64}
 MB = Maybe{Bool}
+"JSON number might be either Float or Int"
+JSONNumber = Union{Float64,Int64}
 
 # since enums start at 0, add one to enum
 "Map a numerical enum to an Array of strings."
@@ -45,12 +47,25 @@ macro typestruct(ex)
         for (j, b) in enumerate(ex.args[3].args)
             if b.head == :(::) && b.args[1] == :typ
                 ex.args[3].args[j].args[1] = :type
-            end
-        end
+            end#if
+        end#for
     else
         ex = :(throw(ArgumentError("Must pass struct expression to @typestruct")))
-    end
+    end#if
     ex
+end#macro
+
+# User-Interactive Auth
+#-------------------------------------------------------------------------------
+
+struct InteractiveStages
+    stages::Vector{String}
+end
+
+struct InteractiveResponse
+    flows::Vector{InteractiveStages}
+    params::Dict{String,Any}
+    session::String
 end
 
 # /login endpoint
@@ -62,15 +77,15 @@ end
 const LoginTypeS = ["m.login.password", "m.login.token"]
 
 "JSON body to send to /login. `type` must be in `LoginTypeS`"
-@typestruct struct LoginParameters{A<:MS,B<:MS,C<:MS,D<:MS,E<:MS,F<:MS,G<:MS}
+@typestruct struct LoginParameters
     typ::String
-    user::A
-    medium::B
-    address::C
-    password::D
-    token::E
-    device_id::F
-    initial_device_display_name::G
+    user::MS
+    medium::MS
+    address::MS
+    password::MS
+    token::MS
+    device_id::MS
+    initial_device_display_name::MS
 end
 
 # response
@@ -92,18 +107,18 @@ end
 
 # request
 
-@typestruct struct AuthenticationData{S<:MS}
-    typ:String
-    session::S
-end
+@typestruct struct AuthenticationData
+    typ::String
+    session::MS
+end#struct
 
-struct RegisterParameters{A<:Maybe{AuthenticationData},B<:MB,C<:MS,D<:MS,E<:MS,F<:MS}
-    auth::A
-    bind_email::B
-    username::C
-    password::D
-    device_id::E
-    initial_device_display_name::F
+struct RegisterParameters
+    auth::Maybe{AuthenticationData}
+    bind_email::MB
+    username::MS
+    password::MS
+    device_id::MS
+    initial_device_display_name::MS
 end
 
 # response
@@ -116,26 +131,26 @@ Register401Response = InteractiveResponse
 # /register/email/requestToken endpoint
 #-------------------------------------------------------------------------------
 
-struct EmailRequestTokenParameters{A<:MS,B<:Number}
-    id_server::A
+struct EmailRequestTokenParameters
+    id_server::MS
     client_secret::String
     email::String
-    send_attempt::B
+    send_attempt::JSONNumber
 end
 
 # /account/password endpoint
 #-------------------------------------------------------------------------------
 
-struct ChangePasswordParameters{A<:Maybe{AuthenticationData}}
+struct ChangePasswordParameters
     new_password::String
-    auth::A
+    auth::Maybe{AuthenticationData}
 end
 
 # /account/deactivate endpoint
 #-------------------------------------------------------------------------------
 
-struct DeactivateParameters{A<:Maybe{AuthenticationData}}
-    auth::A
+struct DeactivateParameters
+    auth::Maybe{AuthenticationData}
 end
 
 Deactivate401Response = InteractiveResponse
@@ -161,30 +176,22 @@ struct ThreePidCredentials
     sid::String
 end
 
-struct ThirdPartyIdentifierParameters{B<:MB}
+struct ThirdPartyIdentifierParameters
     three_pid_creds::ThreePidCredentials
-    bind::B
+    bind::MB
 end
 
-# User-Interactive Auth
+# POST /account/3pid/email/requestToken endpoint
 #-------------------------------------------------------------------------------
 
-struct InteractiveStages
-    stages::Vector{String}
-end
-
-struct InteractiveResponse
-    flows::Vector{InteractiveStages}
-    params::Dict{String,Any}
-    session::String
-end
+# No types or parameters
 
 # errors
 #-------------------------------------------------------------------------------
 
-struct MatrixError{E<:MS}
+struct MatrixError
     errcode::String
-    error::E
+    error::MS
 end
 
 end # module
