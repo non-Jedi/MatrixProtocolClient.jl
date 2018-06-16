@@ -183,8 +183,175 @@ end
 
 # POST /account/3pid/email/requestToken endpoint
 #-------------------------------------------------------------------------------
-
 # No types or parameters
+
+# GET /account/whoami endpoint
+#-------------------------------------------------------------------------------
+
+struct WhoamiResponse
+    user_id::String
+end
+
+# POST /user/{userid}/filter
+#-------------------------------------------------------------------------------
+
+struct Filter
+    limit::MI
+    not_senders::Maybe{Vector{String}}
+    not_types::Maybe{Vector{String}}
+    senders::Maybe{Vector{String}}
+    types::Maybe{Vector{String}}
+end
+
+struct RoomEventFilter
+    limit::MI
+    not_senders::Maybe{Vector{String}}
+    not_types::Maybe{Vector{String}}
+    senders::Maybe{Vector{String}}
+    types::Maybe{Vector{String}}
+    not_rooms::Maybe{Vector{String}}
+    rooms::Maybe{Vector{String}}
+    contains_url::MB
+end
+
+struct RoomFilter
+    not_rooms::Maybe{Vector{String}}
+    rooms::Maybe{Vector{String}}
+    ephemeral::Maybe{RoomEventFilter}
+    include_leave::MB
+    state::Maybe{RoomEventFilter}
+    timeline::Maybe{RoomEventFilter}
+    account_data::Maybe{RoomEventFilter}
+end
+
+struct FilterParameters
+    event_fields::Maybe{Vector{String}}
+    event_format::MS
+    presence::Maybe{Filter}
+    account_data::Maybe{Filter}
+    room::Maybe{RoomFilter}
+end
+
+struct FilterIDResponse
+    filter_id::String
+end
+
+# GET /user/{userid}/filter/{filterId} endpoint
+#-------------------------------------------------------------------------------
+
+# No JSON needed in request body
+
+FilterResponse = FilterParameters
+
+# GET /sync endpoint
+#-------------------------------------------------------------------------------
+
+# TODO: figure out how to have RedactEvent as field in Unsigned when RedactEvent also Unsigned field
+struct Unsigned
+    age::Int64
+    prev_content::Maybe{Dict{String,Any}}
+    transaction_id::MS
+#    redacted_because::Maybe{RedactEvent}
+end
+
+abstract type AbstractEvent end
+abstract type AbstractEvents{E<:AbstractEvent} end
+
+for ev in [:EphemeralEvent,
+           :TimelineEvent,
+           :PresenceEvent,
+           :AccountDataEvent,
+#           :RedactEvent,
+]
+    ex = quote
+        struct $ev <: AbstractEvent
+            event_id::MS
+            content::Dict{String,Any}
+            origin_server_ts::Int64
+            sender::String
+            typ::String
+            unsigned::Unsigned
+        end#struct
+    end#quote
+    eval(ex)
+end#for
+
+struct StateEvent <: AbstractEvent
+    event_id::MS
+    content::Dict{String,Any}
+    origin_server_ts::Int64
+    sender::String
+    state_key::String
+    typ::String
+    unsigned::Unsigned
+end
+
+struct InviteState <: AbstractEvents{StateEvent}
+    events::Vector{StateEvent}
+end
+
+struct State <: AbstractEvents{StateEvent}
+    events::Vector{StateEvent}
+end
+
+struct Timeline <: AbstractEvents{TimelineEvent}
+    events::Vector{TimelineEvent}
+    limited::Bool
+    prev_batch::String
+end
+
+struct Ephemerals <: AbstractEvents{EphemeralEvent}
+    events::Vector{EphemeralEvent}
+end
+
+struct AccountData <: AbstractEvents{AccountDataEvent}
+    events::Vector{AccountDataEvent}
+end
+
+struct Presence <: AbstractEvents{PresenceEvent}
+    events::Vector{PresenceEvent}
+end
+
+struct UnreadNotificationCounts
+    highlight_count::Int64
+    notification_count::Int64
+end
+
+abstract type AbstractRoom end
+
+struct JoinedRoom <: AbstractRoom
+    state::State
+    timeline::Timeline
+    ephemeral::Ephemerals
+    account_data::AccountData
+    unread_notifications::UnreadNotificationCounts
+end
+
+struct InvitedRoom <: AbstractRoom
+    invite_state::InviteState
+end
+
+struct LeftRoom <: AbstractRoom
+    state::State
+    timeline::Timeline
+end
+
+struct Rooms
+    join::Dict{String,JoinedRoom}
+    invite::Dict{String,InvitedRoom}
+    leave::Dict{String,LeftRoom}
+end
+
+struct Sync
+    next_batch::String
+    rooms::Rooms
+    presence::Presence
+    account_data::AccountData
+    # TODO: Implement ToDevice extension to /sync
+#    to_device::ToDevice
+    # TODO: Implement DeviceLists from E2E section
+#    device_lists::DeviceLists
+end
 
 # errors
 #-------------------------------------------------------------------------------
