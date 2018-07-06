@@ -1,4 +1,4 @@
-using MatrixClient.HttpApi
+using MatrixClientProtocol.HttpApi
 import Base
 
 function Base.:(==)(x::MatrixCredentials, y::MatrixCredentials)

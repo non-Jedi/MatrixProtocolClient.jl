@@ -1,5 +1,5 @@
 __precompile__()
-module MatrixClient
+module MatrixClientProtocol
 
 # package code goes here
 include("HttpApi.jl")

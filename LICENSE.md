@@ -1,4 +1,4 @@
-The MatrixClient.jl package is licensed under the GNU Public License, Version 3.0+:
+The MatrixClientProtocol.jl package is licensed under the GNU Public License, Version 3.0+:
 
 > Copyright (c) 2017: Adam Beckmeyer.
 > This program is free software: you can redistribute it and/or modify
