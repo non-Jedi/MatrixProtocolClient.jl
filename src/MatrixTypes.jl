@@ -39,7 +39,7 @@ JSONNumber = Union{Float64,Int64}
 
 # since enums start at 0, add one to enum
 "Map a numerical enum to an Array of strings."
-senum(a::Array{String,1}, i::Enum) = a[Int(i)+1]
+senum(a::Vector{String}, i::Enum) = a[Int(i)+1]
 
 "Create a struct with field named `type` (substitutes for `typ`)"
 macro typestruct(ex)
@@ -55,14 +55,19 @@ macro typestruct(ex)
     ex
 end#macro
 
+abstract type MatrixJSONStruct end
+abstract type MatrixRequestStruct{T}<:MatrixJSONStruct end
+abstract type MatrixResponseStruct<:MatrixJSONStruct end
+abstract type MatrixNestedStruct<:MatrixJSONStruct end
+
 # User-Interactive Auth
 #-------------------------------------------------------------------------------
 
-struct InteractiveStages
+struct InteractiveStages <: MatrixNestedStruct
     stages::Vector{String}
 end
 
-struct InteractiveResponse
+struct InteractiveResponse <: MatrixResponseStruct
     flows::Vector{InteractiveStages}
     params::Dict{String,Any}
     session::String
@@ -77,7 +82,7 @@ end
 const LoginTypeS = ["m.login.password", "m.login.token"]
 
 "JSON body to send to /login. `type` must be in `LoginTypeS`"
-@typestruct struct LoginParameters
+@typestruct struct LoginParameters <: MatrixRequestStruct{:Get}
     typ::String
     user::MS
     medium::MS
@@ -91,7 +96,7 @@ end
 # response
 
 "JSON body reply from /login"
-struct LoginResponse
+struct LoginResponse <: MatrixResponseStruct
     user_id::String
     access_token::String
     device_id::String
@@ -107,12 +112,12 @@ end
 
 # request
 
-@typestruct struct AuthenticationData
+@typestruct struct AuthenticationData <: MatrixNestedStruct
     typ::String
     session::MS
 end#struct
 
-struct RegisterParameters
+struct RegisterParameters <: MatrixRequestStruct{:Post}
     auth::Maybe{AuthenticationData}
     bind_email::MB
     username::MS
