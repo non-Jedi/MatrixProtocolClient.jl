@@ -1,0 +1,42 @@
+* MatrixClientProtocol.jl
+
+The is the README for the [[https://github.com/non-Jedi/MatrixClientProtocol.jl][MatrixClientProtocol.jl]] implementation of a client for
+[[https://matrix.org/docs/spec/client_server/r0.3.0.html][version r0.3.0 of the matrix.org Client-Server API]]. As a [[https://orgmode.org/worg/org-contrib/babel/intro.html#literate-programming][literate program]], this
+document is also the canonical source code for MatrixClientProtocol.jl.
+
+All text in this document, the source code generated from this document, and all
+other associated files are under copyright of [[Authors][the authors of
+MatrixClientProtocol.jl]] unless otherwise noted. The aforementioned items are
+available for your use subject to [[https://github.com/non-Jedi/MatrixClientProtocol.jl/blob/master/LICENSE.md][the GNU Public License, Version 3.0+]]. Within
+this document, sections are quoted from the Client-Server API spec for matrix
+and from [[https://github.com/matrix-org/matrix-doc/tree/client-server/r0.3.0/api][the swagger-compatible representation of the matrix APIs]]. All such
+quotes will be called out with a footnote or some other attribution, and usage
+of those quotes must follow the terms of [[https://github.com/matrix-org/matrix-doc/blob/client-server/r0.3.0/LICENSE][the license for the matrix.org
+specification]].
+
+** Contributing
+
+At this time this project follows a workflow for non-core contributors as
+follows:
+
+1. Fork [[https://github.com/non-Jedi/MatrixClientProtocol.jl][the repository for this software on github]].
+2. Checkout a new branch of the repository locally.
+3. Make changes to README.org on your branch.
+4. Add your name to [[Authors]].
+5. Commit changes, trying your best to follow best practices for commit scoping
+   and commit message formatting.
+6. Push your branch back to a branch on your github fork of the project.
+7. Issue a pull request from your branch to the master branch of the root
+   repository.
+8. I will review your pull request, merge it, generate the new "tangled" source
+   code from README.org, and push a new commit to master.
+
+If you are experienced with org-mode, you may include a commit generating new
+source code in your pull request. A description of how to do so is available in
+the org-mode documentation.
+
+By issuing a pull request to this repository, you agree to release your
+contribution under [[https://github.com/non-Jedi/MatrixClientProtocol.jl/blob/master/LICENSE.md][the terms of this project's license]].
+
+** Authors
+- [[https://matrix.to/#/@adam:thebeckmeyers.xyz][Adam Beckmeyer]]
