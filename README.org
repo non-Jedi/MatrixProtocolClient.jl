@@ -256,6 +256,7 @@ We know the following about requests:
             =Authorization= header as =Bearer $access_token= (not part of
             r0.3.0, but we'll include it anyway).
 - Content-type :: for all requests will be =application/json=
+- ...
 
 For this library, we will choose to pass access tokens in the header. So before
 a request can be made to any endpoint, the following must be provided:
@@ -264,6 +265,89 @@ a request can be made to any endpoint, the following must be provided:
 - =Vector= of =Pair=s of headers
 - Body content encoded as a JSON =String=.
 
+**** Process swagger schema object
+
+Using the format seen above, the schema tells about what will happen in the
+body. The first thing to create in evaluating this macro is a macro for
+generating a struct representing the body. As a simple first pass, this macro
+will be recursive.
+
+Before we can write this macro, we'll need some utility functions. The first
+turns the path from the swagger of the form ="/_matrix/client/r0/login/"= into
+an UpperCamelCase type name e.g. =:Login=. This function will return a symbol
+since it will be used as the type's name in the macro.
+
+#+NAME: function-typename
+#+BEGIN_SRC jupyter-julia
+  """
+      typename(path::AbstractString)::Symbol
+
+  Returns a name for e.g. "/_matrix/client/r0/my/fun/path" like "MyFunPath".
+  """
+  function typename(path::AbstractString)::Symbol
+      splitpath = split(path, "/"; keep=false)
+      Symbol(join(titlecase.(splitpath[4:end]), ""))
+  end
+#+END_SRC
+
+Then we write a nice simple testcase for this function to make sure all is
+working right.
+
+#+NAME: function-typename-test
+#+BEGIN_SRC jupyter-julia
+  @test MatrixSwagger.typename("/_matrix/client/r0/my/fun/path") == :MyFunPath
+#+END_SRC
+
+#+NAME: macro-process-schema
+#+BEGIN_SRC jupyter-julia
+  macro process_schema(path::AbstractString, d::Dict)
+      :(struct $path
+        end)
+  end
+
+#+END_SRC
+
+Now this should all be joined together in =src= and in =test=.
+
+#+BEGIN_SRC jupyter-julia :tangle src/MatrixSwagger.jl :noweb yes
+  module MatrixSwagger
+
+  <<function-typename>>
+
+  end#module
+#+END_SRC
+
+#+BEGIN_SRC jupyter-julia :tangle test/MatrixSwagger.jl :noweb yes
+  using MatrixClientProtocol: MatrixSwagger
+
+  @testset "Utils" begin
+      <<function-typename-test>>
+  end
+
+#+END_SRC
+
+*** MatrixClientProtocol.jl
+
+This file ties all of the previous work together, making modules available to
+other modules, etc.
+
+#+BEGIN_SRC jupyter-julia :tangle src/MatrixClientProtocol.jl
+  module MatrixClientProtocol
+
+  include("MatrixSwagger.jl")
+
+  end#module
+#+END_SRC
+
+This file runs all the tests written in other files.
+
+#+BEGIN_SRC jupyter-julia :tangle test/runtests.jl
+  using Base.Test
+
+  println("Starting tests...")
+
+  @testset "Matrix Swagger" begin include("MatrixSwagger.jl") end
+#+END_SRC
 *** REQUIRE
 
 This program is written using Julia v0.6 although v0.7 and stable v1.0 are on
@@ -275,7 +359,7 @@ and for creating Julia structs from the swagger spec.
 #+BEGIN_SRC jupyter-julia :tangle REQUIRE :eval never
   julia 0.6
   HTTP 0.4.3
-  JSON 0.18.0
+  JSON 0.17.0
 #+END_SRC
 
 ** Authors

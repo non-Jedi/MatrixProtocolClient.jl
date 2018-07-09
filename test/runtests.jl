@@ -1,4 +1,5 @@
 using Base.Test
 
-println("Starting tests")
-@time @testset "HTTP API" begin include("HttpApi_test.jl") end
+println("Starting tests...")
+
+@testset "Matrix Swagger" begin include("MatrixSwagger.jl") end
