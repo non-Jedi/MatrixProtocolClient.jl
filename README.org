@@ -245,6 +245,25 @@ the "login" endpoint.
   }
 #+END_SRC
 
+What we ultimately want here is a macro that takes as input a specific path,
+looks at =swagger.json=, and creates a set of structs that can be used to
+encapsulate all required values for requesting the endpoint and for processing
+the response.
+
+We know the following about requests:
+
+- tokens :: may be attached to any request as a query parameter or in a
+            =Authorization= header as =Bearer $access_token= (not part of
+            r0.3.0, but we'll include it anyway).
+- Content-type :: for all requests will be =application/json=
+
+For this library, we will choose to pass access tokens in the header. So before
+a request can be made to any endpoint, the following must be provided:
+
+- =Vector= of =Pair=s of query parameters
+- =Vector= of =Pair=s of headers
+- Body content encoded as a JSON =String=.
+
 *** REQUIRE
 
 This program is written using Julia v0.6 although v0.7 and stable v1.0 are on
