@@ -38,6 +38,9 @@ the org-mode documentation.
 By issuing a pull request to this repository, you agree to release your
 contribution under [[https://github.com/non-Jedi/MatrixClientProtocol.jl/blob/master/LICENSE.md][the terms of this project's license]].
 
+** Authors
+- [[https://matrix.to/#/@adam:thebeckmeyers.xyz][Adam Beckmeyer]]
+
 ** The Program
 
 MatrixClientProtocol.jl is intended as a library to allow developers to easily
@@ -71,7 +74,7 @@ like to yak-shave today.
 
 I've downloaded the matrix swagger[fn:1] in JSON form from
 https://matrix.org/docs/api/client-server/json/api-docs.json and saved them as
-=swagger.json=. At the top level, this file has the following structure:
+~swagger.json~. At the top level, this file has the following structure:
 
 #+BEGIN_SRC javascript
   {
@@ -97,8 +100,8 @@ https://matrix.org/docs/api/client-server/json/api-docs.json and saved them as
   }
 #+END_SRC
 
-It seems clear from the above that the ="paths"= key has the information we're
-interested in. Below is an extract from ="paths"= with just the information for
+It seems clear from the above that the ~"paths"~ key has the information we're
+interested in. Below is an extract from ~"paths"~ with just the information for
 the "login" endpoint.
 
 #+BEGIN_SRC javascript
@@ -246,24 +249,24 @@ the "login" endpoint.
 #+END_SRC
 
 What we ultimately want here is a macro that takes as input a specific path,
-looks at =swagger.json=, and creates a set of structs that can be used to
+looks at ~swagger.json~, and creates a set of structs that can be used to
 encapsulate all required values for requesting the endpoint and for processing
 the response.
 
 We know the following about requests:
 
 - tokens :: may be attached to any request as a query parameter or in a
-            =Authorization= header as =Bearer $access_token= (not part of
+            ~Authorization~ header as ~Bearer $access_token~ (not part of
             r0.3.0, but we'll include it anyway).
-- Content-type :: for all requests will be =application/json=
+- Content-type :: for all requests will be ~application/json~
 - ...
 
 For this library, we will choose to pass access tokens in the header. So before
 a request can be made to any endpoint, the following must be provided:
 
-- =Vector= of =Pair=s of query parameters
-- =Vector= of =Pair=s of headers
-- Body content encoded as a JSON =String=.
+- ~Vector~ of ~Pair~ of query parameters
+- ~Vector~ of ~Pair~ of headers
+- Body content encoded as a JSON ~String~.
 
 **** Process swagger schema object
 
@@ -273,9 +276,11 @@ generating a struct representing the body. As a simple first pass, this macro
 will be recursive.
 
 Before we can write this macro, we'll need some utility functions. The first
-turns the path from the swagger of the form ="/_matrix/client/r0/login/"= into
-an UpperCamelCase type name e.g. =:Login=. This function will return a symbol
-since it will be used as the type's name in the macro.
+turns the path from the swagger of the form ~"/_matrix/client/r0/login/"~ into
+an UpperCamelCase type name e.g. ~:Login~. This function will return a symbol
+since it will be used as the type's name in the macro. We need this so we can
+call the struct for representing the body of a request to the aforementioned
+endpoint something like ~:LoginRequestBody~.
 
 #+NAME: function-typename
 #+BEGIN_SRC jupyter-julia
@@ -298,6 +303,83 @@ working right.
   @test MatrixSwagger.typename("/_matrix/client/r0/my/fun/path") == :MyFunPath
 #+END_SRC
 
+Now we need a function that will insert a new field into a type expression.
+Basically given an expression like ~:(struct Foo end)~, we want to be able to
+call a function to create ~struct Foo; a::A end~ if given ~a~ and ~A~.
+
+#+NAME: function-insertfield
+#+BEGIN_SRC jupyter-julia
+  # Need convenience function to turn types into symbols/expressions for `insertfield!`
+  "Inserts field `a` of type `T` into a type expression."
+  function insertfield!(ex::Expr, a::Symbol, T::Union{Symbol,Expr})
+      if ex.head == :type
+          push!(ex.args[end].args, :($a::$T))
+      else
+          throw(ArgumentError("Can only add field to concrete type expression"))
+      end#if
+  end#function
+#+END_SRC
+
+We should test that a struct has the fieldnames we'd expect after modifying its
+expression with this function.
+
+#+NAME: function-insertfield-test
+#+BEGIN_SRC jupyter-julia
+  @testset "insertfield!" begin
+      e = :(struct Foo; a::String end)
+      MatrixSwagger.insertfield!(e, :b, :Int64)
+      @test all(e.args[end].args[end-1:end] .== [:(a::String), :(b::Int64)])
+      MatrixSwagger.insertfield!(e, :c, :(Vector{Int64}))
+      @test all(e.args[end].args[end-2:end] .==
+                [:(a::String), :(b::Int64), :(c::Vector{Int64})])
+  end
+#+END_SRC
+
+To feed into this function, we need to be able to map from the types defined in
+the JSON schema in the swagger to real concrete Julia types. Then we will have
+all the information we need to parse the nested JSON objects into a set of
+nested Julia types.
+
+#+NAME: function-juliatype
+#+BEGIN_SRC jupyter-julia
+  """
+      juliatype(topleveltype::String[, nestedtypes...])::Type
+
+  Return corresponding Julia type for a swagger type string.
+
+  Throws ArgumentError for unknown types.
+  """
+  function juliatype(s::AbstractString, args...)::Union{Symbol,Expr}
+      if s == "string"
+          :String
+      elseif s == "array" && !isempty(args)
+          :(Vector{$(juliatype(args...))})
+      elseif s == "object"
+          :(Dict{String,Any})
+      elseif s == "boolean"
+          :Bool
+      elseif s == "file"
+          :IOBuffer
+      elseif s == "integer"
+          :Int64
+      elseif s == "number"
+          :Float64
+      else
+          throw(ArgumentError("No known corresponding Julia type"))
+      end#if
+  end#function
+#+END_SRC
+
+We should test that this handles both unnested and nested cases.
+
+#+NAME: function-juliatype-test
+#+BEGIN_SRC jupyter-julia
+  @testset "juliatype" begin
+      @test MatrixSwagger.juliatype("boolean") == :Bool
+      @test MatrixSwagger.juliatype("array", "object") == :(Vector{Dict{String,Any}})
+  end
+#+END_SRC
+
 #+NAME: macro-process-schema
 #+BEGIN_SRC jupyter-julia
   macro process_schema(path::AbstractString, d::Dict)
@@ -307,12 +389,16 @@ working right.
 
 #+END_SRC
 
-Now this should all be joined together in =src= and in =test=.
+Now this should all be joined together in ~src~ and in ~test~.
 
 #+BEGIN_SRC jupyter-julia :tangle src/MatrixSwagger.jl :noweb yes
   module MatrixSwagger
 
   <<function-typename>>
+
+  <<function-insertfield>>
+
+  <<function-juliatype>>
 
   end#module
 #+END_SRC
@@ -322,8 +408,9 @@ Now this should all be joined together in =src= and in =test=.
 
   @testset "Utils" begin
       <<function-typename-test>>
+      <<function-insertfield-test>>
+      <<function-juliatype-test>>
   end
-
 #+END_SRC
 
 *** MatrixClientProtocol.jl
@@ -361,9 +448,6 @@ and for creating Julia structs from the swagger spec.
   HTTP 0.4.3
   JSON 0.17.0
 #+END_SRC
-
-** Authors
-- [[https://matrix.to/#/@adam:thebeckmeyers.xyz][Adam Beckmeyer]]
 
 * Footnotes
 
