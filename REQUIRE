@@ -1,3 +1,4 @@
 julia 0.6
 HTTP 0.4.3
 JSON 0.17.0
+YAML 0.2.1
