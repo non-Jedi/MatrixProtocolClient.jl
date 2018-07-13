@@ -105,9 +105,10 @@ defining structs for successive layers of the JSON body.
 Before we can write the macros for generating request/response types, we'll need
 some utility functions. The first turns the path from the swagger of the form
 ~"/_matrix/client/r0/login/"~ into an UpperCamelCase type name e.g. ~:Login~.
-This function will return a symbol since it will be used as the type's name in
-the macro. We need this so we can call the struct for representing the body of a
-request to the aforementioned endpoint something like ~:LoginRequestBody~.
+This function will return a symbol since it will be used in the various types'
+names in the macro. We need this so we can call the struct for representing the
+body of a request to the aforementioned endpoint something like
+~:LoginRequestBody~.
 
 #+NAME: function-typename
 #+BEGIN_SRC jupyter-julia
@@ -121,9 +122,6 @@ request to the aforementioned endpoint something like ~:LoginRequestBody~.
       Symbol(join(titlecase.(splitpath[4:end]), ""))
   end
 #+END_SRC
-
-Then we write a nice simple testcase for this function to make sure all is
-working right.
 
 #+NAME: function-typename-test
 #+BEGIN_SRC jupyter-julia
@@ -146,9 +144,6 @@ call a function to create ~struct Foo; a::A end~ if given ~a~ and ~A~.
       end#if
   end#function
 #+END_SRC
-
-We should test that a struct has the fieldnames we'd expect after modifying its
-expression with this function.
 
 #+NAME: function-insertfield-test
 #+BEGIN_SRC jupyter-julia
@@ -197,14 +192,89 @@ nested Julia types.
   end#function
 #+END_SRC
 
-We should test that this handles both unnested and nested cases.
-
 #+NAME: function-juliatype-test
 #+BEGIN_SRC jupyter-julia
   @testset "juliatype" begin
       @test MatrixSwagger.juliatype("boolean") == :Bool
       @test MatrixSwagger.juliatype("array", "object") == :(Vector{Dict{String,Any}})
+      @test MatrixSwagger.juliatype("array", "array", "object") == :(Vector{Vector{Dict{String,Any}}})
   end
+#+END_SRC
+
+For a single endpoint, we must generate a base type for the endpoint, a type
+representing the body of the request, a type representing the query params of
+the request, and types representing each potential body for each potential
+response. The first thing we do is define the abstract and parametric types that
+will encapsulate these generated types.
+
+Each endpoint will have a concrete type representing the endpoint itself. This
+type will be used as parameters in Request types and Response types.
+
+#+NAME: type-MatrixEndpoint
+#+BEGIN_SRC jupyter-julia
+  "A single matrix endpoint."
+  abstract type MatrixEndpoint end
+#+END_SRC
+
+For both requests and responses, bodies can have many different forms. We need
+to be able to encode the endpoint these bodies belong to in the type system, so
+we use the type representing the endpoint as a parameter on the supertype of all
+bodies.
+
+#+NAME: swagger-http-bodies
+#+BEGIN_SRC jupyter-julia
+  "The body in any HTTP request or response."
+  abstract type HTTPBody end
+
+  "The body in an HTTP request to endpoint `T`."
+  abstract type RequestBody{T<:MatrixEndpoint} <: HTTPBody end
+  "The body from an HTTP response to endpoint T with status code `Status`."
+  abstract type ResponseBody{T<:MatrixEndpoint,Status} <: HTTPBody end
+#+END_SRC
+
+One of the methods we'll need to define for each ~MatrixEndpoint~ is one to
+return the endpoint path. We'll call this function ~path~ and define a generic
+implementation throwing an error so that we can attach an appropriate docstring.
+
+#+NAME: swagger-function-path
+#+BEGIN_SRC jupyter-julia
+  """
+      path(e::MatrixEndpoint)::Vector{<:AbstractString}
+
+  Returns the path to an endpoint.
+
+  Each element of the string represents part of the path. For a normal HTTP
+  endpoint, they should be joined together with `/` characters and appended to the
+  base URL of the homeserver.
+  """
+  path(::MatrixEndpoint) = throw(ArgumentError("Unknown endpoint path"))
+#+END_SRC
+
+We also need to create a function that generates that method for each endpoint
+(expression that evaluates to a new method).
+
+#+NAME: swagger-function-createpath
+#+BEGIN_SRC jupyter-julia
+  """
+      createpath(path::AbstractString)::Expr
+
+  Returns an expression to add a method to `path` for an endpoint.
+  """
+  function createpath(path::AbstractString)::Expr
+      endpoint = typename(path)
+      :(path(::$endpoint) = $(split(path, "/"; keep=false)))
+  end#function
+#+END_SRC
+
+#+NAME: swagger-function-createpath-test
+#+BEGIN_SRC jupyter-julia
+  @testset "createpath" begin
+      pathexpr = MatrixSwagger.createpath("/_matrix/client/r0/path/to/my/dreams")
+      @test pathexpr.head == :(=)
+      @test pathexpr.args[1] == :(path(::PathToMyDreams))
+      @test all(pathexpr.args[end].args[end] .==
+                ["_matrix", "client", "r0", "path", "to", "my", "dreams"])
+  end#@testset
 #+END_SRC
 
 #+NAME: macro-process-schema
@@ -227,6 +297,14 @@ Now this should all be joined together in ~src~ and in ~test~.
 
   <<function-juliatype>>
 
+  <<type-MatrixEndpoint>>
+
+  <<swagger-http-bodies>>
+    
+  <<swagger-function-path>>
+
+  <<swagger-function-createpath>>
+
   end#module
 #+END_SRC
 
@@ -237,6 +315,7 @@ Now this should all be joined together in ~src~ and in ~test~.
       <<function-typename-test>>
       <<function-insertfield-test>>
       <<function-juliatype-test>>
+      <<swagger-function-createpath-test>>
   end
 #+END_SRC
 

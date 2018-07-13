@@ -47,4 +47,36 @@ function juliatype(s::AbstractString, args...)::Union{Symbol,Expr}
     end#if
 end#function
 
+"A single matrix endpoint."
+abstract type MatrixEndpoint end
+
+"The body in any HTTP request or response."
+abstract type HTTPBody end
+
+"The body in an HTTP request to endpoint `T`."
+abstract type RequestBody{T<:MatrixEndpoint} <: HTTPBody end
+"The body from an HTTP response to endpoint T with status code `Status`."
+abstract type ResponseBody{T<:MatrixEndpoint,Status} <: HTTPBody end
+
+"""
+    path(e::MatrixEndpoint)::Vector{<:AbstractString}
+
+Returns the path to an endpoint.
+
+Each element of the string represents part of the path. For a normal HTTP
+endpoint, they should be joined together with `/` characters and appended to the
+base URL of the homeserver.
+"""
+path(::MatrixEndpoint) = throw(ArgumentError("Unknown endpoint path"))
+
+"""
+    createpath(path::AbstractString)::Expr
+
+Returns an expression to add a method to `path` for an endpoint.
+"""
+function createpath(path::AbstractString)::Expr
+    endpoint = typename(path)
+    :(path(::$endpoint) = $(split(path, "/"; keep=false)))
+end#function
+
 end#module
