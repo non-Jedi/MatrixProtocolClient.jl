@@ -1,4 +1,4 @@
-module MatrixSwagger
+module Swagger
 
 """
     typename(path::AbstractString)::Symbol

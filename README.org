@@ -125,7 +125,7 @@ body of a request to the aforementioned endpoint something like
 
 #+NAME: function-typename-test
 #+BEGIN_SRC jupyter-julia
-  @test MatrixSwagger.typename("/_matrix/client/r0/my/fun/path") == :MyFunPath
+  @test Swagger.typename("/_matrix/client/r0/my/fun/path") == :MyFunPath
 #+END_SRC
 
 Now we need a function that will insert a new field into a type expression.
@@ -149,9 +149,9 @@ call a function to create ~struct Foo; a::A end~ if given ~a~ and ~A~.
 #+BEGIN_SRC jupyter-julia
   @testset "insertfield!" begin
       e = :(struct Foo; a::String end)
-      MatrixSwagger.insertfield!(e, :b, :Int64)
+      Swagger.insertfield!(e, :b, :Int64)
       @test all(e.args[end].args[end-1:end] .== [:(a::String), :(b::Int64)])
-      MatrixSwagger.insertfield!(e, :c, :(Vector{Int64}))
+      Swagger.insertfield!(e, :c, :(Vector{Int64}))
       @test all(e.args[end].args[end-2:end] .==
                 [:(a::String), :(b::Int64), :(c::Vector{Int64})])
   end
@@ -195,9 +195,9 @@ nested Julia types.
 #+NAME: function-juliatype-test
 #+BEGIN_SRC jupyter-julia
   @testset "juliatype" begin
-      @test MatrixSwagger.juliatype("boolean") == :Bool
-      @test MatrixSwagger.juliatype("array", "object") == :(Vector{Dict{String,Any}})
-      @test MatrixSwagger.juliatype("array", "array", "object") == :(Vector{Vector{Dict{String,Any}}})
+      @test Swagger.juliatype("boolean") == :Bool
+      @test Swagger.juliatype("array", "object") == :(Vector{Dict{String,Any}})
+      @test Swagger.juliatype("array", "array", "object") == :(Vector{Vector{Dict{String,Any}}})
   end
 #+END_SRC
 
@@ -269,13 +269,16 @@ We also need to create a function that generates that method for each endpoint
 #+NAME: swagger-function-createpath-test
 #+BEGIN_SRC jupyter-julia
   @testset "createpath" begin
-      pathexpr = MatrixSwagger.createpath("/_matrix/client/r0/path/to/my/dreams")
+      pathexpr = Swagger.createpath("/_matrix/client/r0/path/to/my/dreams")
       @test pathexpr.head == :(=)
       @test pathexpr.args[1] == :(path(::PathToMyDreams))
       @test all(pathexpr.args[end].args[end] .==
                 ["_matrix", "client", "r0", "path", "to", "my", "dreams"])
   end#@testset
 #+END_SRC
+
+We will parse the swagger YAML to get a ~Dict{String,Any}~, and then we must
+transform this 
 
 #+NAME: macro-process-schema
 #+BEGIN_SRC jupyter-julia
@@ -288,8 +291,8 @@ We also need to create a function that generates that method for each endpoint
 
 Now this should all be joined together in ~src~ and in ~test~.
 
-#+BEGIN_SRC jupyter-julia :tangle src/MatrixSwagger.jl :noweb yes
-  module MatrixSwagger
+#+BEGIN_SRC jupyter-julia :tangle src/Swagger.jl :noweb yes
+  module Swagger
 
   <<function-typename>>
 
@@ -308,8 +311,8 @@ Now this should all be joined together in ~src~ and in ~test~.
   end#module
 #+END_SRC
 
-#+BEGIN_SRC jupyter-julia :tangle test/MatrixSwagger.jl :noweb yes
-  using MatrixClientProtocol: MatrixSwagger
+#+BEGIN_SRC jupyter-julia :tangle test/Swagger.jl :noweb yes
+  using MatrixClientProtocol: Swagger
 
   @testset "Utils" begin
       <<function-typename-test>>
@@ -327,7 +330,7 @@ other modules, etc.
 #+BEGIN_SRC jupyter-julia :tangle src/MatrixClientProtocol.jl
   module MatrixClientProtocol
 
-  include("MatrixSwagger.jl")
+  include("Swagger.jl")
 
   end#module
 #+END_SRC
@@ -339,7 +342,7 @@ This file runs all the tests written in other files.
 
   println("Starting tests...")
 
-  @testset "Matrix Swagger" begin include("MatrixSwagger.jl") end
+  @testset "Matrix Swagger" begin include("Swagger.jl") end
 #+END_SRC
 *** REQUIRE
 
@@ -353,4 +356,5 @@ and for creating Julia structs from the swagger spec.
   julia 0.6
   HTTP 0.4.3
   JSON 0.17.0
+  YAML 0.2.1
 #+END_SRC

@@ -1,5 +1,5 @@
 module MatrixClientProtocol
 
-include("MatrixSwagger.jl")
+include("Swagger.jl")
 
 end#module
