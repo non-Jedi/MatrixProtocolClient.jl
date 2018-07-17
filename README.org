@@ -278,7 +278,48 @@ We also need to create a function that generates that method for each endpoint
 #+END_SRC
 
 We will parse the swagger YAML to get a ~Dict{String,Any}~, and then we must
-transform this 
+transform this ~Dict~ into an ~Expr~ representing a type. This type may have
+fields that are of a type that also must be defined, so the function must emit a
+~Vector~ of ~Expr~.
+
+#+BEGIN_SRC jupyter-julia
+  """
+      requestbodyschema(swagger, path, method)::Dict
+
+  Returns the schema for the body of a request to a given `path` with `method`.
+  """
+  function requestbodyschema(swagger::Dict,
+                         path::AbstractString,
+                         method::AbstractString)::Dict
+      params = swagger["paths"][path][method]["parameters"]
+      # params: [{"in": "body", "schema": ...}, {"in": "...", ...}]
+      schema = params[find(get.(params, "in", "") .== "body")[1]]["schema"]
+  end#function
+
+  """
+      swagger2bodytype(swagger::Dict{String,Any}, path)::Vector{Expr}
+
+  Returns type `Expr` representing request body from Swagger.
+  """
+  function swagger2bodytype(swagger::Dict,
+                            path::AbstractString,
+                            method::AbstractString)::Vector{Expr}
+      schema = requestbodyschema(swagger, path, method)
+      # check that shape of schema is as expected
+      if schema["type"] != "object"
+          throw(ArgumentError("Unexpected body type: $(schema[\"type\"])"))
+      end#if
+      properties = schema["properties"]
+      # ex will be built up into body type
+      ex = :(struct $(typename(swagger["basePath"] * path)) end)
+      property_names = keys(properties)
+      property_types = juliatype.(get.(get.(properties, property_names, nothing),
+                                       "type",
+                                       nothing))
+      insertfield!.(ex, property_names, property_types)
+      ex
+  end#function
+#+END_SRC
 
 #+NAME: macro-process-schema
 #+BEGIN_SRC jupyter-julia
