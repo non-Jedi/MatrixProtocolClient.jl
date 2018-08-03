@@ -63,7 +63,18 @@ of matrix as hash maps, this library defines a native Julia struct to
 deserialize/serialize JSON to/from. These structs will be generated from the
 swagger-compatible representation of the API.
 
-*** Swagger processing
+*** Architecture
+
+In this section, I'll define types and indicate with them the basic structure of
+this library.
+
+*** Swagger processing                                                 :TODO:
+
+This section is not yet completed. The data model of swagger turned out to be
+more complex than I thought. Some day if the matrix repo is using an up-to-date
+version of OpenAPI, I may actually implement a full type generator for the
+specification, but that is not an interesting way for me to use my freetime at
+the moment.
 
 Rather than digging into the vagaries of the specification for the swagger
 specification, we choose the pragmatic approach of looking at the swagger files
@@ -282,15 +293,19 @@ transform this ~Dict~ into an ~Expr~ representing a type. This type may have
 fields that are of a type that also must be defined, so the function must emit a
 ~Vector~ of ~Expr~.
 
+*Note: the below is not correct and was hacked together at around 1AM*
+
 #+BEGIN_SRC jupyter-julia
   """
       requestbodyschema(swagger, path, method)::Dict
 
   Returns the schema for the body of a request to a given `path` with `method`.
   """
-  function requestbodyschema(swagger::Dict,
-                         path::AbstractString,
-                         method::AbstractString)::Dict
+  function requestbodyschema(
+      swagger::Dict,
+      path::AbstractString,
+      method::AbstractString
+  )::Dict
       params = swagger["paths"][path][method]["parameters"]
       # params: [{"in": "body", "schema": ...}, {"in": "...", ...}]
       schema = params[find(get.(params, "in", "") .== "body")[1]]["schema"]
