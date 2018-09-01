@@ -6,14 +6,14 @@ module Swagger
 Returns a name for e.g. "/_matrix/client/r0/my/fun/path" like "MyFunPath".
 """
 function typename(path::AbstractString)::Symbol
-    splitpath = split(path, "/"; keep=false)
+    splitpath = split(path, "/"; keepempty=false)
     Symbol(join(titlecase.(splitpath[4:end]), ""))
 end
 
 # Need convenience function to turn types into symbols/expressions for `insertfield!`
 "Inserts field `a` of type `T` into a type expression."
 function insertfield!(ex::Expr, a::Symbol, T::Union{Symbol,Expr})
-    if ex.head == :type
+    if ex.head == :struct
         push!(ex.args[end].args, :($a::$T))
     else
         throw(ArgumentError("Can only add field to concrete type expression"))
@@ -76,7 +76,7 @@ Returns an expression to add a method to `path` for an endpoint.
 """
 function createpath(path::AbstractString)::Expr
     endpoint = typename(path)
-    :(path(::$endpoint) = $(split(path, "/"; keep=false)))
+    :(path(::$endpoint) = $(split(path, "/"; keepempty=false)))
 end#function
 
 end#module

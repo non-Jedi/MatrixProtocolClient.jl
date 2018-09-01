@@ -1,4 +1,4 @@
-using MatrixClientProtocol: Swagger
+using MatrixClientProtocol.Swagger
 
 @testset "Utils" begin
     @test Swagger.typename("/_matrix/client/r0/my/fun/path") == :MyFunPath
