@@ -1,13 +1,13 @@
-* MatrixClientProtocol.jl
+* MatrixProtocolClient.jl
 
-The is the README for the [[https://github.com/non-Jedi/MatrixClientProtocol.jl][MatrixClientProtocol.jl]] implementation of a client for
+The is the README for the [[https://github.com/non-Jedi/MatrixProtocolClient.jl][MatrixProtocolClient.jl]] implementation of a client for
 [[https://matrix.org/docs/spec/client_server/r0.3.0.html][version r0.3.0 of the matrix.org Client-Server API]]. As a [[https://orgmode.org/worg/org-contrib/babel/intro.html#literate-programming][literate program]], this
-document is also the canonical source code for MatrixClientProtocol.jl.
+document is also the canonical source code for MatrixProtocolClient.jl.
 
 All text in this document, the source code generated from this document, and all
 other associated files are under copyright of [[Authors][the authors of
-MatrixClientProtocol.jl]] unless otherwise noted. The aforementioned items are
-available for your use subject to [[https://github.com/non-Jedi/MatrixClientProtocol.jl/blob/master/LICENSE.md][the GNU Public License, Version 3.0+]]. Within
+MatrixProtocolClient.jl]] unless otherwise noted. The aforementioned items are
+available for your use subject to [[https://github.com/non-Jedi/MatrixProtocolClient.jl/blob/master/LICENSE.md][the GNU Public License, Version 3.0+]]. Within
 this document, sections are quoted from the Client-Server API spec for matrix
 and from [[https://github.com/matrix-org/matrix-doc/tree/client-server/r0.3.0/api][the swagger-compatible representation of the matrix APIs]]. All such
 quotes will be called out with a footnote or some other attribution, and usage
@@ -19,7 +19,7 @@ specification]].
 At this time this project follows a workflow for non-core contributors as
 follows:
 
-1. Fork [[https://github.com/non-Jedi/MatrixClientProtocol.jl][the repository for this software on github]].
+1. Fork [[https://github.com/non-Jedi/MatrixProtocolClient.jl][the repository for this software on github]].
 2. Checkout a new branch of the repository locally.
 3. Make changes to README.org on your branch.
 4. Add your name to [[Authors]].
@@ -36,14 +36,14 @@ source code in your pull request. A description of how to do so is available in
 the org-mode documentation.
 
 By issuing a pull request to this repository, you agree to release your
-contribution under [[https://github.com/non-Jedi/MatrixClientProtocol.jl/blob/master/LICENSE.md][the terms of this project's license]].
+contribution under [[https://github.com/non-Jedi/MatrixProtocolClient.jl/blob/master/LICENSE.md][the terms of this project's license]].
 
 ** Authors
 - [[https://matrix.to/#/@adam:thebeckmeyers.xyz][Adam Beckmeyer]]
 
 ** The Program
 
-MatrixClientProtocol.jl is intended as a library to allow developers to easily
+MatrixProtocolClient.jl is intended as a library to allow developers to easily
 write applications making use of the matrix network or otherwise integrate the
 matrix network into their Julia application. The initial scope of development
 will be as follows, but more functionality may be added over time as needed or
@@ -368,7 +368,7 @@ Now this should all be joined together in ~src~ and in ~test~.
 #+END_SRC
 
 #+BEGIN_SRC jupyter-julia :tangle test/Swagger.jl :noweb yes
-  using MatrixClientProtocol.Swagger
+  using MatrixProtocolClient.Swagger
 
   @testset "Utils" begin
       <<function-typename-test>>
@@ -378,13 +378,13 @@ Now this should all be joined together in ~src~ and in ~test~.
   end
 #+END_SRC
 
-*** MatrixClientProtocol.jl
+*** MatrixProtocolClient.jl
 
 This file ties all of the previous work together, making modules available to
 other modules, etc.
 
-#+BEGIN_SRC jupyter-julia :tangle src/MatrixClientProtocol.jl
-  module MatrixClientProtocol
+#+BEGIN_SRC jupyter-julia :tangle src/MatrixProtocolClient.jl
+  module MatrixProtocolClient
 
   include("Swagger.jl")
 
