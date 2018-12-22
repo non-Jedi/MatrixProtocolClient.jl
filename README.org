@@ -122,7 +122,7 @@ body of a request to the aforementioned endpoint something like
 ~:LoginRequestBody~.
 
 #+NAME: function-typename
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   """
       typename(path::AbstractString)::Symbol
 
@@ -135,7 +135,7 @@ body of a request to the aforementioned endpoint something like
 #+END_SRC
 
 #+NAME: function-typename-test
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   @test Swagger.typename("/_matrix/client/r0/my/fun/path") == :MyFunPath
 #+END_SRC
 
@@ -144,7 +144,7 @@ Basically given an expression like ~:(struct Foo end)~, we want to be able to
 call a function to create ~struct Foo; a::A end~ if given ~a~ and ~A~.
 
 #+NAME: function-insertfield
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   # Need convenience function to turn types into symbols/expressions for `insertfield!`
   "Inserts field `a` of type `T` into a type expression."
   function insertfield!(ex::Expr, a::Symbol, T::Union{Symbol,Expr})
@@ -157,7 +157,7 @@ call a function to create ~struct Foo; a::A end~ if given ~a~ and ~A~.
 #+END_SRC
 
 #+NAME: function-insertfield-test
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   @testset "insertfield!" begin
       e = :(struct Foo; a::String end)
       Swagger.insertfield!(e, :b, :Int64)
@@ -174,7 +174,7 @@ all the information we need to parse the nested JSON objects into a set of
 nested Julia types.
 
 #+NAME: function-juliatype
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   """
       juliatype(topleveltype::String[, nestedtypes...])::Type
 
@@ -204,7 +204,7 @@ nested Julia types.
 #+END_SRC
 
 #+NAME: function-juliatype-test
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   @testset "juliatype" begin
       @test Swagger.juliatype("boolean") == :Bool
       @test Swagger.juliatype("array", "object") == :(Vector{Dict{String,Any}})
@@ -222,7 +222,7 @@ Each endpoint will have a concrete type representing the endpoint itself. This
 type will be used as parameters in Request types and Response types.
 
 #+NAME: type-MatrixEndpoint
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   "A single matrix endpoint."
   abstract type MatrixEndpoint end
 #+END_SRC
@@ -233,7 +233,7 @@ we use the type representing the endpoint as a parameter on the supertype of all
 bodies.
 
 #+NAME: swagger-http-bodies
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   "The body in any HTTP request or response."
   abstract type HTTPBody end
 
@@ -248,7 +248,7 @@ return the endpoint path. We'll call this function ~path~ and define a generic
 implementation throwing an error so that we can attach an appropriate docstring.
 
 #+NAME: swagger-function-path
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   """
       path(e::MatrixEndpoint)::Vector{<:AbstractString}
 
@@ -265,7 +265,7 @@ We also need to create a function that generates that method for each endpoint
 (expression that evaluates to a new method).
 
 #+NAME: swagger-function-createpath
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   """
       createpath(path::AbstractString)::Expr
 
@@ -278,7 +278,7 @@ We also need to create a function that generates that method for each endpoint
 #+END_SRC
 
 #+NAME: swagger-function-createpath-test
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   @testset "createpath" begin
       pathexpr = Swagger.createpath("/_matrix/client/r0/path/to/my/dreams")
       @test pathexpr.head == :(=)
@@ -295,7 +295,7 @@ fields that are of a type that also must be defined, so the function must emit a
 
 *Note: the below is not correct and was hacked together at around 1AM*
 
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   """
       requestbodyschema(swagger, path, method)::Dict
 
@@ -337,7 +337,7 @@ fields that are of a type that also must be defined, so the function must emit a
 #+END_SRC
 
 #+NAME: macro-process-schema
-#+BEGIN_SRC jupyter-julia
+#+BEGIN_SRC julia
   macro process_schema(path::AbstractString, d::Dict)
       :(struct $path
         end)
@@ -347,7 +347,7 @@ fields that are of a type that also must be defined, so the function must emit a
 
 Now this should all be joined together in ~src~ and in ~test~.
 
-#+BEGIN_SRC jupyter-julia :tangle src/Swagger.jl :noweb yes
+#+BEGIN_SRC julia :tangle src/Swagger.jl :noweb yes
   module Swagger
 
   <<function-typename>>
@@ -367,7 +367,7 @@ Now this should all be joined together in ~src~ and in ~test~.
   end#module
 #+END_SRC
 
-#+BEGIN_SRC jupyter-julia :tangle test/Swagger.jl :noweb yes
+#+BEGIN_SRC julia :tangle test/Swagger.jl :noweb yes
   using MatrixProtocolClient.Swagger
 
   @testset "Utils" begin
@@ -383,7 +383,7 @@ Now this should all be joined together in ~src~ and in ~test~.
 This file ties all of the previous work together, making modules available to
 other modules, etc.
 
-#+BEGIN_SRC jupyter-julia :tangle src/MatrixProtocolClient.jl
+#+BEGIN_SRC julia :tangle src/MatrixProtocolClient.jl
   module MatrixProtocolClient
 
   include("Swagger.jl")
@@ -393,7 +393,7 @@ other modules, etc.
 
 This file runs all the tests written in other files.
 
-#+BEGIN_SRC jupyter-julia :tangle test/runtests.jl
+#+BEGIN_SRC julia :tangle test/runtests.jl
   using Test
 
   println("Starting tests...")
@@ -408,7 +408,7 @@ the HTTP.jl library for making requests to a matrix server and receiving
 responses. JSON.jl is used for deserializing JSON from matrix server responses,
 and for creating Julia structs from the swagger spec.
 
-#+BEGIN_SRC jupyter-julia :tangle REQUIRE :eval never
+#+BEGIN_SRC julia :tangle REQUIRE :eval never
   julia 0.6
   HTTP 0.4.3
   JSON 0.17.0
