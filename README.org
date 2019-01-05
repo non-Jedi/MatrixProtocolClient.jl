@@ -63,25 +63,162 @@ of matrix as hash maps, this library defines a native Julia struct to
 deserialize/serialize JSON to/from. These structs will be generated from the
 swagger-compatible representation of the API.
 
-*** Architecture
+*** HTTP Endpoints
 
-In this section, I'll define types and indicate with them the basic structure of
-this library.
+Here we'll create types and functions to make access of the matrix HTTP apis
+convenient. First, we should make it possible to login.
+
+**** Login
+
+First of all, login endpoints along with many parts of matrix use "types" with
+Java-style namespaces. For login, we have ~m.login.password~ for example. We'll
+represent these with a simple parametric type with no fields where the parameter
+will be a tuple of the form ~(:m, :login, :password)~. This will allow
+specialization and dispatching on these types when they appear.
+
+For convenience, we'll also define abstract types for grouping processed
+requests and responses from the matrix server. In general, functions calling
+matrix api endpoints should accept ~MatrixRequest~ type arguments and return
+~MatrixResponse~.
+
+#+NAME: matrix-type
+#+BEGIN_SRC julia
+  struct MatrixType{T} end
+
+  abstract type MatrixRequest{M} end
+
+  abstract type MatrixResponse end
+#+END_SRC
+
+Even though we're only designing the system for logging in now, we can see that
+we'll need to be able to send a wide variety of HTTP requests. So let's define a
+basic fallback function for that purpose.
+
+#+NAME: matrix-request
+#+BEGIN_SRC julia
+  import HTTP
+
+  export request
+
+  """
+      request(::MatrixRequest)::MatrixResponse
+
+  Calls a matrix endpoint and returns a processed response.
+  """
+  function request(req::MatrixRequest)::MatrixResponse
+      res = HTTP.request(method(req), url(req), headers(req), body(req))
+      # We expect different response formats depending on details of request
+      process_response(req, res)
+  end#function
+#+END_SRC
+
+This begins to show us what methods need an implementation for all
+~MatrixRequest~ types, defining the interface: 
+
+- ~method~
+- ~url~
+- ~headers~
+- ~body~
+- ~process_response~
+- ~response_type~ which will be shown later
+
+For the first, this is why we made ~MatrixRequest~ parametric. We define
+~method~ as follows.
+
+#+NAME: method
+#+BEGIN_SRC julia
+  function method(req::MatrixRequest{M})::AbstractString where {M}
+      if M in (:GET, :HEAD, :POST, :PUT, :DELETE, :TRACE, :OPTIONS, :CONNECT, :PATCH)
+          string(M)
+      else
+          throw(DomainError(M, "Not a valid HTTP method."))
+      end#if
+  end#function
+#+END_SRC
+
+For ~url~, we will assume that ~MatrixRequest~ has a ~homeserver~ field. We also
+must define ~path~ and ~query~ methods which will specify the ~path~ field and
+no query params as the default case. We can override these assumption later if
+necessary for specific types.
+
+#+NAME: url
+#+BEGIN_SRC julia
+  import HTTP.URIs: URI
+
+  url(req::MatrixRequest)::URI =
+      URI(; host=req.homeserver, path=req.path, query=query(req))
+  path(req::MatrixRequest) = req.path
+  query(::MatrixRequest) = ""
+#+END_SRC
+
+Specific headers may be needed on each endpoint, but the most common header
+needed by matrix is the ~Authorization~ header for transmitting the user's
+access token. ~MatrixRequest~ types will have to opt out of having this token
+sent in the headers.
+
+#+NAME: headers
+#+BEGIN_SRC julia
+  headers(req::MatrixRequest) = defaultheaders(req)
+  defaultheaders(req::MatrixRequest) = ("Authorization" => "Bearer " * token(req),)
+  token(req::MatrixRequest) = req.token
+#+END_SRC
+
+~body(req)~ should default to empty since =GET= request shouldn't have bodies.
+
+#+NAME: body
+#+BEGIN_SRC julia
+  body(::MatrixRequest) = Vector{UInt8}()
+#+END_SRC
+
+The most complicated of these methods is ~process_response~, and we get to
+offload most of that to JSON2.jl. The most important part for us to implement is
+making sure that each ~MatrixRequest~ provides JSON2 with a type it can parse
+the response into. For return material that is not json, this method will need
+to be overridden. As a default, if no custom type is provided, JSON2 will parse
+the response into a NamedTuple.
+
+#+NAME: process_response
+#+BEGIN_SRC julia
+  import JSON2
+
+  function process_response(req::MatrixRequest, res::HTTP.Response)
+      # TODO: error handling for failure to parse
+      JSON2.read(String(res.body), response_type(req))
+  end#function
+
+  response_type(::MatrixRequest) = NamedTuple
+#+END_SRC
+
+#+BEGIN_SRC julia :tangle src/MatrixHTTP.jl :noweb yes :comments noweb
+  module MatrixHTTP
+
+  <<matrix-type>>
+  <<matrix-request>>
+  <<method>>
+  <<url>>
+  <<headers>>
+  <<body>>
+  <<process_response>>
+
+  end#module
+#+END_SRC
 
 *** MatrixProtocolClient.jl
 
 This file ties all of the previous work together, making modules available to
 other modules, etc.
 
-#+BEGIN_SRC julia :tangle src/MatrixProtocolClient.jl
+#+BEGIN_SRC julia :tangle src/MatrixProtocolClient.jl :comments noweb
   module MatrixProtocolClient
+
+  include("MatrixHTTP.jl")
 
   end#module
 #+END_SRC
 
 This file runs all the tests written in other files.
 
-#+BEGIN_SRC julia :tangle test/runtests.jl
+#+BEGIN_SRC julia :tangle test/runtests.jl :comments noweb
   using Test
 
 #+END_SRC
@@ -386,7 +523,7 @@ fields that are of a type that also must be defined, so the function must emit a
 
 Now this should all be joined together in ~src~ and in ~test~.
 
-#+BEGIN_SRC julia :tangle no :noweb yes
+#+BEGIN_SRC julia :tangle no :noweb yes :comments noweb
   module Swagger
 
   <<function-typename>>
