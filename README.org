@@ -68,7 +68,46 @@ swagger-compatible representation of the API.
 In this section, I'll define types and indicate with them the basic structure of
 this library.
 
-*** Swagger processing                                                 :TODO:
+*** MatrixProtocolClient.jl
+
+This file ties all of the previous work together, making modules available to
+other modules, etc.
+
+#+BEGIN_SRC julia :tangle src/MatrixProtocolClient.jl
+  module MatrixProtocolClient
+
+  end#module
+#+END_SRC
+
+This file runs all the tests written in other files.
+
+#+BEGIN_SRC julia :tangle test/runtests.jl
+  using Test
+
+#+END_SRC
+*** REQUIRE
+
+In the absence of an [[https://github.com/python-hyper/hyper-h2][h2]]-style HTTP library for Julia, it uses the HTTP.jl
+library for making requests to a matrix server and receiving responses. JSON2.jl
+is used for deserializing JSON from matrix server responses and for constructing
+JSON payloads. This =REQUIRE= file is used by current package registry rather
+than the =Project.toml= with which it should be kept up to date.
+
+#+BEGIN_SRC julia :tangle REQUIRE :eval never
+  julia 1.0
+  HTTP 0.7.1
+  JSON2 0.2.3
+#+END_SRC
+
+*** Obsoleted 
+These are sections of dead code that should probably be excised from the README
+and program. Originally I had planned to auto-generate all HTTP endpoint
+functions and types from the Swagger specification. Since there are no extent
+Julia processors for Swagger, and the format is rather complex (and the matrix
+Swagger is not always well-formed in the first place, this turned out to be more
+difficult than it is worth.
+
+**** Swagger processing                                                :TODO:
 
 This section is not yet completed. The data model of swagger turned out to be
 more complex than I thought. Some day if the matrix repo is using an up-to-date
@@ -107,7 +146,7 @@ a request can be made to any endpoint, the following must be provided:
 - ~Vector~ of ~Pair~ of headers
 - Body content encoded as a JSON ~String~.
 
-**** Process swagger schema object
+***** Process swagger schema object
 
 First we'll work towards generating a struct representing the body. Since a JSON
 body is often nexted, as a simple first pass, this macro will be recursive,
@@ -347,7 +386,7 @@ fields that are of a type that also must be defined, so the function must emit a
 
 Now this should all be joined together in ~src~ and in ~test~.
 
-#+BEGIN_SRC julia :tangle src/Swagger.jl :noweb yes
+#+BEGIN_SRC julia :tangle no :noweb yes
   module Swagger
 
   <<function-typename>>
@@ -367,7 +406,7 @@ Now this should all be joined together in ~src~ and in ~test~.
   end#module
 #+END_SRC
 
-#+BEGIN_SRC julia :tangle test/Swagger.jl :noweb yes
+#+BEGIN_SRC julia :tangle no :noweb yes
   using MatrixProtocolClient.Swagger
 
   @testset "Utils" begin
@@ -378,39 +417,3 @@ Now this should all be joined together in ~src~ and in ~test~.
   end
 #+END_SRC
 
-*** MatrixProtocolClient.jl
-
-This file ties all of the previous work together, making modules available to
-other modules, etc.
-
-#+BEGIN_SRC julia :tangle src/MatrixProtocolClient.jl
-  module MatrixProtocolClient
-
-  include("Swagger.jl")
-
-  end#module
-#+END_SRC
-
-This file runs all the tests written in other files.
-
-#+BEGIN_SRC julia :tangle test/runtests.jl
-  using Test
-
-  println("Starting tests...")
-
-  @testset "Matrix Swagger" begin include("Swagger.jl") end
-#+END_SRC
-*** REQUIRE
-
-This program is written using Julia v0.6 although v0.7 and stable v1.0 are on
-the near horizon. In the absence of an [[https://github.com/python-hyper/hyper-h2][h2]]-style HTTP library for Julia, it uses
-the HTTP.jl library for making requests to a matrix server and receiving
-responses. JSON.jl is used for deserializing JSON from matrix server responses,
-and for creating Julia structs from the swagger spec.
-
-#+BEGIN_SRC julia :tangle REQUIRE :eval never
-  julia 0.6
-  HTTP 0.4.3
-  JSON 0.17.0
-  YAML 0.2.1
-#+END_SRC
