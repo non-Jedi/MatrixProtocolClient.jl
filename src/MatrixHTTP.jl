@@ -1,9 +1,7 @@
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::*Login][Login:8]]
+# [[file:~/repos/MatrixProtocolClient.jl/README.org::*MatrixHTTP.jl][MatrixHTTP.jl:1]]
 module MatrixHTTP
 
 # [[file:~/repos/MatrixProtocolClient.jl/README.org::matrix-type][matrix-type]]
-struct MatrixType{T} end
-
 abstract type MatrixRequest{M} end
 
 abstract type MatrixResponse end
@@ -37,28 +35,30 @@ end#function
 import HTTP.URIs: URI
 
 url(req::MatrixRequest)::URI =
-    URI(; host=req.homeserver, path=req.path, query=query(req))
-path(req::MatrixRequest) = req.path
+    URI(; scheme="https", host=req.host, path=path(req), query=query(req))
 query(::MatrixRequest) = ""
 # url ends here
 # [[file:~/repos/MatrixProtocolClient.jl/README.org::headers][headers]]
 headers(req::MatrixRequest) = defaultheaders(req)
-defaultheaders(req::MatrixRequest) = ("Authorization" => "Bearer " * token(req),)
+defaultheaders(req::MatrixRequest) = ["Authorization" => "Bearer " * token(req)]
 token(req::MatrixRequest) = req.token
 # headers ends here
 # [[file:~/repos/MatrixProtocolClient.jl/README.org::body][body]]
 body(::MatrixRequest) = Vector{UInt8}()
 # body ends here
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::process_response][process_response]]
-import JSON2
+# [[file:~/repos/MatrixProtocolClient.jl/README.org::http-consts][http-consts]]
+const base_path = ["/_matrix", "client", "r0"]
+extend_path(extpath::AbstractVector{<:AbstractString}) =
+    join(vcat(base_path, extpath), "/")
+# http-consts ends here
+# [[file:~/repos/MatrixProtocolClient.jl/README.org::login-request][login-request]]
+struct GetLogin <: MatrixRequest{:GET}
+    host::String
+end
 
-function process_response(req::MatrixRequest, res::HTTP.Response)
-    # TODO: error handling for failure to parse
-    JSON2.read(String(res.body), response_type(req))
-end#function
-
-response_type(::MatrixRequest) = NamedTuple
-# process_response ends here
+headers(::GetLogin) = Pair{String,String}[]
+path(::GetLogin) = extend_path(["login"])
+# login-request ends here
 
 end#module
-# Login:8 ends here
+# MatrixHTTP.jl:1 ends here

@@ -68,7 +68,7 @@ swagger-compatible representation of the API.
 Here we'll create types and functions to make access of the matrix HTTP apis
 convenient. First, we should make it possible to login.
 
-**** Login
+**** General setup
 
 First of all, login endpoints along with many parts of matrix use "types" with
 Java-style namespaces. For login, we have ~m.login.password~ for example. We'll
@@ -83,8 +83,6 @@ matrix api endpoints should accept ~MatrixRequest~ type arguments and return
 
 #+NAME: matrix-type
 #+BEGIN_SRC julia
-  struct MatrixType{T} end
-
   abstract type MatrixRequest{M} end
 
   abstract type MatrixResponse end
@@ -116,9 +114,9 @@ This begins to show us what methods need an implementation for all
 ~MatrixRequest~ types, defining the interface: 
 
 - ~method~
-- ~url~
-- ~headers~
-- ~body~
+- ~url~ or both ~path~ and ~query~
+- ~headers~ (defaults to only including the Authorization header)
+- ~body~ (defaults empty)
 - ~process_response~
 - ~response_type~ which will be shown later
 
@@ -136,18 +134,16 @@ For the first, this is why we made ~MatrixRequest~ parametric. We define
   end#function
 #+END_SRC
 
-For ~url~, we will assume that ~MatrixRequest~ has a ~homeserver~ field. We also
-must define ~path~ and ~query~ methods which will specify the ~path~ field and
-no query params as the default case. We can override these assumption later if
-necessary for specific types.
+For ~url~, we will assume that ~MatrixRequest~ has a ~host~ field. We also must
+define ~path~ and ~query~ methods. Zero query params will be set as the default
+case, but there is no sane default for ~path~.
 
 #+NAME: url
 #+BEGIN_SRC julia
   import HTTP.URIs: URI
 
   url(req::MatrixRequest)::URI =
-      URI(; host=req.homeserver, path=req.path, query=query(req))
-  path(req::MatrixRequest) = req.path
+      URI(; scheme="https", host=req.host, path=path(req), query=query(req))
   query(::MatrixRequest) = ""
 #+END_SRC
 
@@ -159,7 +155,7 @@ sent in the headers.
 #+NAME: headers
 #+BEGIN_SRC julia
   headers(req::MatrixRequest) = defaultheaders(req)
-  defaultheaders(req::MatrixRequest) = ("Authorization" => "Bearer " * token(req),)
+  defaultheaders(req::MatrixRequest) = ["Authorization" => "Bearer " * token(req)]
   token(req::MatrixRequest) = req.token
 #+END_SRC
 
@@ -170,24 +166,52 @@ sent in the headers.
   body(::MatrixRequest) = Vector{UInt8}()
 #+END_SRC
 
-The most complicated of these methods is ~process_response~, and we get to
-offload most of that to JSON2.jl. The most important part for us to implement is
-making sure that each ~MatrixRequest~ provides JSON2 with a type it can parse
-the response into. For return material that is not json, this method will need
-to be overridden. As a default, if no custom type is provided, JSON2 will parse
-the response into a NamedTuple.
+The most complicated of these methods is ~process_response~. This will be
+defined independently for each endpoint and method.
 
-#+NAME: process_response
-#+BEGIN_SRC julia
-  import JSON2
+For utility we define the following constants and utility functions for using
+them.
 
-  function process_response(req::MatrixRequest, res::HTTP.Response)
-      # TODO: error handling for failure to parse
-      JSON2.read(String(res.body), response_type(req))
-  end#function
+#+NAME: http-consts
+#+begin_src julia
+  const base_path = ["/_matrix", "client", "r0"]
+  extend_path(extpath::AbstractVector{<:AbstractString}) =
+      join(vcat(base_path, extpath), "/")
+#+end_src
 
-  response_type(::MatrixRequest) = NamedTuple
-#+END_SRC
+**** Login
+
+First we define the types for ~GET~ and ~POST~ requests to the login endpoint.
+
+#+NAME: login-request
+#+begin_src julia
+  struct GetLogin <: MatrixRequest{:GET}
+      host::String
+  end
+
+  headers(::GetLogin) = Pair{String,String}[]
+  path(::GetLogin) = extend_path(["login"])
+#+end_src
+
+#+NAME: login-request-test
+#+begin_src julia
+  import MatrixProtocolClient: MatrixHTTP
+
+  @testset "get login" begin
+      let MH = MatrixHTTP, req = MH.GetLogin("example.com"), u = MH.url(req)
+          @test MH.method(req) == "GET"
+          @test u.host == "example.com"
+          @test u.path == "/_matrix/client/r0/login"
+          @test u.scheme == "https"
+          @test isempty(u.query)
+          @test isempty(MH.headers(req))
+          @test isempty(MH.body(req))
+      end#let
+  end#testset
+
+#+end_src
+
+**** MatrixHTTP.jl
 
 #+BEGIN_SRC julia :tangle src/MatrixHTTP.jl :noweb yes :comments noweb
   module MatrixHTTP
@@ -198,10 +222,18 @@ the response into a NamedTuple.
   <<url>>
   <<headers>>
   <<body>>
-  <<process_response>>
+  <<http-consts>>
+  <<login-request>>
 
   end#module
 #+END_SRC
+
+#+BEGIN_SRC julia :tangle test/MatrixHTTP.jl :noweb yes :comments noweb
+  using Test
+
+  <<login-request-test>>
+#+END_SRC
+
 
 *** MatrixProtocolClient.jl
 
@@ -219,6 +251,5 @@ other modules, etc.
 This file runs all the tests written in other files.
 
 #+BEGIN_SRC julia :tangle test/runtests.jl :comments noweb
-  using Test
-
+  include("MatrixHTTP.jl")
 #+END_SRC
