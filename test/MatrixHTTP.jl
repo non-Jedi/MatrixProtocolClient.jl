@@ -17,4 +17,18 @@ import MatrixProtocolClient: MatrixHTTP
 end#testset
 
 # login-request-test ends here
+# [[file:~/repos/MatrixProtocolClient.jl/README.org::login-request-process-test][login-request-process-test]]
+import MatrixProtocolClient: MatrixHTTP
+const MH = MatrixHTTP
+import HTTP: Response
+
+@testset "get login process" begin
+	let resp = Response(200; body=
+		Vector{UInt8}("{\"flows\": [{\"type\": \"m.login.password\"}]}")),
+		glr = MH.process_response(MH.GetLogin("example.com"), resp)
+		@test length(glr.flows) == 1
+		@test glr.flows[1] == "m.login.password"
+	end#let
+end#testset
+# login-request-process-test ends here
 # MatrixHTTP.jl:2 ends here

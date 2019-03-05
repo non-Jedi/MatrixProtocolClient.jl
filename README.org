@@ -78,14 +78,14 @@ specialization and dispatching on these types when they appear.
 
 For convenience, we'll also define abstract types for grouping processed
 requests and responses from the matrix server. In general, functions calling
-matrix api endpoints should accept ~MatrixRequest~ type arguments and return
-~MatrixResponse~.
+matrix api endpoints should accept ~Endpoint~ type arguments and return
+~Response~.
 
 #+NAME: matrix-type
 #+BEGIN_SRC julia
-  abstract type MatrixRequest{M} end
+  abstract type Endpoint{M} end
 
-  abstract type MatrixResponse end
+  abstract type Response{E <: Endpoint} end
 #+END_SRC
 
 Even though we're only designing the system for logging in now, we can see that
@@ -99,11 +99,11 @@ basic fallback function for that purpose.
   export request
 
   """
-      request(::MatrixRequest)::MatrixResponse
+      request(::Endpoint)::Response
 
   Calls a matrix endpoint and returns a processed response.
   """
-  function request(req::MatrixRequest)::MatrixResponse
+  function request(req::T)::Response{T} where {T <: Endpoint}
       res = HTTP.request(method(req), url(req), headers(req), body(req))
       # We expect different response formats depending on details of request
       process_response(req, res)
@@ -111,7 +111,7 @@ basic fallback function for that purpose.
 #+END_SRC
 
 This begins to show us what methods need an implementation for all
-~MatrixRequest~ types, defining the interface: 
+~Endpoint~ types, defining the interface: 
 
 - ~method~
 - ~url~ or both ~path~ and ~query~
@@ -120,12 +120,12 @@ This begins to show us what methods need an implementation for all
 - ~process_response~
 - ~response_type~ which will be shown later
 
-For the first, this is why we made ~MatrixRequest~ parametric. We define
+For the first, this is why we made ~Endpoint~ parametric. We define
 ~method~ as follows.
 
 #+NAME: method
 #+BEGIN_SRC julia
-  function method(req::MatrixRequest{M})::AbstractString where {M}
+  function method(req::Endpoint{M})::AbstractString where {M}
       if M in (:GET, :HEAD, :POST, :PUT, :DELETE, :TRACE, :OPTIONS, :CONNECT, :PATCH)
           string(M)
       else
@@ -134,7 +134,7 @@ For the first, this is why we made ~MatrixRequest~ parametric. We define
   end#function
 #+END_SRC
 
-For ~url~, we will assume that ~MatrixRequest~ has a ~host~ field. We also must
+For ~url~, we will assume that ~Endpoint~ has a ~host~ field. We also must
 define ~path~ and ~query~ methods. Zero query params will be set as the default
 case, but there is no sane default for ~path~.
 
@@ -142,28 +142,28 @@ case, but there is no sane default for ~path~.
 #+BEGIN_SRC julia
   import HTTP.URIs: URI
 
-  url(req::MatrixRequest)::URI =
+  url(req::Endpoint)::URI =
       URI(; scheme="https", host=req.host, path=path(req), query=query(req))
-  query(::MatrixRequest) = ""
+  query(::Endpoint) = ""
 #+END_SRC
 
 Specific headers may be needed on each endpoint, but the most common header
 needed by matrix is the ~Authorization~ header for transmitting the user's
-access token. ~MatrixRequest~ types will have to opt out of having this token
+access token. ~Endpoint~ types will have to opt out of having this token
 sent in the headers.
 
 #+NAME: headers
 #+BEGIN_SRC julia
-  headers(req::MatrixRequest) = defaultheaders(req)
-  defaultheaders(req::MatrixRequest) = ["Authorization" => "Bearer " * token(req)]
-  token(req::MatrixRequest) = req.token
+  headers(req::Endpoint) = defaultheaders(req)
+  defaultheaders(req::Endpoint) = ["Authorization" => "Bearer " * token(req)]
+  token(req::Endpoint) = req.token
 #+END_SRC
 
 ~body(req)~ should default to empty since =GET= request shouldn't have bodies.
 
 #+NAME: body
 #+BEGIN_SRC julia
-  body(::MatrixRequest) = Vector{UInt8}()
+  body(::Endpoint) = Vector{UInt8}()
 #+END_SRC
 
 The most complicated of these methods is ~process_response~. This will be
@@ -185,7 +185,7 @@ First we define the types for ~GET~ and ~POST~ requests to the login endpoint.
 
 #+NAME: login-request
 #+begin_src julia
-  struct GetLogin <: MatrixRequest{:GET}
+  struct GetLogin <: Endpoint{:GET}
       host::String
   end
 
@@ -211,6 +211,40 @@ First we define the types for ~GET~ and ~POST~ requests to the login endpoint.
 
 #+end_src
 
+The more difficult bit is processing this response. For this we need
+to define a struct with all the potential information from the
+response.
+
+#+NAME: login-request-process
+#+begin_src julia
+  struct GetLoginResponse{S <: AbstractString} <: Response{GetLogin}
+	  flows::Vector{S}
+  end#struct
+
+  import LazyJSON
+  const LJ = LazyJSON
+
+  function process_response(endpoint::GetLogin, resp::HTTP.Response)
+	  GetLoginResponse([i.type for i in LJ.value(String(resp.body)).flows])
+  end#function
+#+end_src
+
+#+NAME: login-request-process-test
+#+begin_src julia
+  import MatrixProtocolClient: MatrixHTTP
+  const MH = MatrixHTTP
+  import HTTP: Response
+
+  @testset "get login process" begin
+	  let resp = Response(200; body=
+		  Vector{UInt8}("{\"flows\": [{\"type\": \"m.login.password\"}]}")),
+		  glr = MH.process_response(MH.GetLogin("example.com"), resp)
+		  @test length(glr.flows) == 1
+		  @test glr.flows[1] == "m.login.password"
+	  end#let
+  end#testset
+#+end_src
+
 **** MatrixHTTP.jl
 
 #+BEGIN_SRC julia :tangle src/MatrixHTTP.jl :noweb yes :comments noweb
@@ -224,6 +258,7 @@ First we define the types for ~GET~ and ~POST~ requests to the login endpoint.
   <<body>>
   <<http-consts>>
   <<login-request>>
+  <<login-request-process>>
 
   end#module
 #+END_SRC
@@ -232,6 +267,7 @@ First we define the types for ~GET~ and ~POST~ requests to the login endpoint.
   using Test
 
   <<login-request-test>>
+  <<login-request-process-test>>
 #+END_SRC
 
 
