@@ -99,24 +99,26 @@ basic fallback function for that purpose.
   export request
 
   """
-      request(::Endpoint)::Response
+      request(::Endpoint; layers)::Tuple
 
-  Calls a matrix endpoint and returns a processed response.
+  Calls a matrix endpoint and returns a tuple for input to `HTTP.request`
+
+  `layers` is passed through to `HTTP.stack` as kwargs to specify which layers to
+  include.
   """
-  function request(req::T)::Response{T} where {T <: Endpoint}
-      res = HTTP.request(method(req), url(req), headers(req), body(req))
-      # We expect different response formats depending on details of request
-      process_response(req, res)
+  function request(req::Endpoint, body; layers...)::Tuple{
+      DataType, String, HTTP.URI, HTTP.Headers, Any
+  }
+      (HTTP.stack(;layers...), method(req), url(req), headers(req), body)
   end#function
 #+END_SRC
 
 This begins to show us what methods need an implementation for all
-~Endpoint~ types, defining the interface: 
+~Endpoint~ types, defining the interface:
 
 - ~method~
 - ~url~ or both ~path~ and ~query~
 - ~headers~ (defaults to only including the Authorization header)
-- ~body~ (defaults empty)
 - ~process_response~
 - ~response_type~ which will be shown later
 
@@ -159,13 +161,6 @@ sent in the headers.
   token(req::Endpoint) = req.token
 #+END_SRC
 
-~body(req)~ should default to empty since =GET= request shouldn't have bodies.
-
-#+NAME: body
-#+BEGIN_SRC julia
-  body(::Endpoint) = Vector{UInt8}()
-#+END_SRC
-
 The most complicated of these methods is ~process_response~. This will be
 defined independently for each endpoint and method.
 
@@ -189,23 +184,30 @@ First we define the types for ~GET~ and ~POST~ requests to the login endpoint.
       host::String
   end
 
-  headers(::GetLogin) = Pair{String,String}[]
+  headers(::GetLogin) = HTTP.Headers()
   path(::GetLogin) = extend_path(["login"])
 #+end_src
 
 #+NAME: login-request-test
 #+begin_src julia
   import MatrixProtocolClient: MatrixHTTP
+  using HTTP
 
   @testset "get login" begin
-      let MH = MatrixHTTP, req = MH.GetLogin("example.com"), u = MH.url(req)
-          @test MH.method(req) == "GET"
-          @test u.host == "example.com"
-          @test u.path == "/_matrix/client/r0/login"
-          @test u.scheme == "https"
-          @test isempty(u.query)
-          @test isempty(MH.headers(req))
-          @test isempty(MH.body(req))
+      let MH = MatrixHTTP, ep = MH.GetLogin("example.com"), u = MH.url(ep)
+          let reqtuple = MH.request(ep)
+              @test MH.method(ep) == "GET"
+              @test u.host == "example.com"
+              @test u.path == "/_matrix/client/r0/login"
+              @test u.scheme == "https"
+              @test isempty(u.query)
+              @test isempty(MH.headers(ep))
+              @test reqtuple[1] === HTTP.stack()
+              @test reqtuple[2] == "GET"
+              @test reqtuple[3] == u
+              @test isempty(reqtuple[4])
+              @test isempty(reqtuple[5])
+          end#let
       end#let
   end#testset
 
@@ -245,12 +247,91 @@ response.
   end#testset
 #+end_src
 
+Now that we've done so for a =GET= request to the login endpoint,
+we'll also define things for the =POST= needed to actually
+login. Before that, though, we need to define ~Identifier~ types as
+specified in the matrix CS api.
+
+#+NAME: identifier-types
+#+begin_src julia
+  import JSON
+
+  abstract type Identifier end
+
+  struct UserIdentifier <: Identifier
+	  user::String
+  end#struct
+
+  identifier_type(::UserIdentifier) = "m.id.user"
+
+  struct ThirdPartyIdentifier <: Identifier
+	  medium::String
+	  Address::String
+  end#struct
+
+  identifier_type(::ThirdPartyIdentifier) = "m.id.thirdparty"
+
+  struct PhoneIdentifier <: Identifier
+	  country::String
+	  phone::String
+  end#struct
+
+  identifier_type(::PhoneIdentifier) = "m.id.phone"
+
+  struct IdentifierWrapper{T<:Identifier}
+	  wrapped::T
+	  fns::Vector{Symbol}
+  end
+
+  IdentifierWrapper(x::Identifier, syms) = IdentifierWrapper(x, collect(syms))
+  IdentifierWrapper(x::T) where {T <: Identifier} = IdentifierWrapper(x, fieldnames(T))
+
+  JSON.lower(a::Identifier) = IdentifierWrapper(a)
+
+  function JSON.show_json(io::JSON.StructuralContext, s::JSON.CommonSerialization,
+						  x::IdentifierWrapper)
+	  JSON.begin_object(io)
+	  JSON.show_pair(io, s, "type", identifer_type(x.wrapped))
+	  for fn in x.fns
+		  JSON.show_pair(io, s, fn, getfield(x.wrapped, fn))
+	  end#for
+	  JSON.end_object(io)
+  end#function
+#+end_src
+
+#+NAME: post-login
+#+begin_src julia
+  struct PostLogin <: Endpoint{:POST}
+      host::String
+  end
+
+  "Return body for `POST` login request"
+  function (ep::PostLogin)(logintype::String; identifier=nothing, password=nothing,
+                           token=nothing, device_id=nothing,
+                           initial_device_display_name=nothing)
+      # First check for valid input
+      logintype in ("m.login.password", "m.login.token") || throw(DomainError(logintype))
+      if logintype == "m.login.password" && isnothing(password)
+          throw(DomainError(password,
+                            "Password must be provided for \"m.login.password\""))
+      end#if
+      if logintype == "m.login.token" && isnothing(token)
+          throw(DomainError(token,
+                            "Token must be provided for \"m.login.token\""))
+      end#if
+  end#function
+
+  headers(::PostLogin) = HTTP.Headers()
+  path(::PostLogin) = extend_path(["login"])
+#+end_src
+
 **** MatrixHTTP.jl
 
 #+BEGIN_SRC julia :tangle src/MatrixHTTP.jl :noweb yes :comments noweb
   module MatrixHTTP
 
   <<matrix-type>>
+  <<identifier-types>>
   <<matrix-request>>
   <<method>>
   <<url>>
@@ -259,6 +340,7 @@ response.
   <<http-consts>>
   <<login-request>>
   <<login-request-process>>
+  <<post-login>>
 
   end#module
 #+END_SRC
