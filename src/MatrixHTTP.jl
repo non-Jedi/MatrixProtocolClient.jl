@@ -1,146 +1,100 @@
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::*MatrixHTTP.jl][MatrixHTTP.jl:1]]
+# This file is part of MatrixProtocolClient.jl.
+
+# MatrixProtocolClient.jl is free software: you can redistribute it
+# and/or modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation, either version 3 of
+# the License, or (at your option) any later version.
+#
+# MatrixProtocolClient.jl is distributed in the hope that it will be
+# useful, but WITHOUT ANY WARRANTY; without even the implied warranty
+# of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+
+# * MatrixHTTP.jl
+# Since the structure of an HTTP API is generally relatively
+# declarative in nature, this module seeks to make the API definitions
+# as declarative as possible. To that end, we will have a type
+# representing each API endpoint ~<: Endpoint~ where an instance of
+# the type represents the endpoint for a particular homeserver. HTTP
+# request payloads will be represented as a simple container type with
+# fields ~endpoint::(<:Endpoint)~, ~body::(<:RequestBody)~, and
+# ~parameters::(<:Parameters)~.
+
 module MatrixHTTP
 
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::matrix-type][matrix-type]]
+# ** Abstract Types
+
+export Request
+
 abstract type Endpoint{M} end
+abstract type RequestBody{E <: Endpoint} end
+abstract type Parameters{E <: Endpoint} end
+
+struct Request{E<:Endpoint, RB<:RequestBody{E}, P<:Parameters{E}}
+    endpoint::E
+    body::RB
+    parameters::P
+end#struct
 
 abstract type Response{E <: Endpoint} end
-# matrix-type ends here
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::identifier-types][identifier-types]]
-import JSON
 
-abstract type Identifier end
+# ** HTTP.jl integration
+# Here we define how the set of types we created above are used to
+# actually make an HTTP request using the HTTP.jl library.
 
-struct UserIdentifier <: Identifier
-	user::String
-end#struct
-
-identifier_type(::UserIdentifier) = "m.id.user"
-
-struct ThirdPartyIdentifier <: Identifier
-	medium::String
-	Address::String
-end#struct
-
-identifier_type(::ThirdPartyIdentifier) = "m.id.thirdparty"
-
-struct PhoneIdentifier <: Identifier
-	country::String
-	phone::String
-end#struct
-
-identifier_type(::PhoneIdentifier) = "m.id.phone"
-
-struct IdentifierWrapper{T<:Identifier}
-	wrapped::T
-	fns::Vector{Symbol}
-end
-
-IdentifierWrapper(x::Identifier, syms) = IdentifierWrapper(x, collect(syms))
-IdentifierWrapper(x::T) where {T <: Identifier} = IdentifierWrapper(x, fieldnames(T))
-
-JSON.lower(a::Identifier) = IdentifierWrapper(a)
-
-function JSON.show_json(io::JSON.StructuralContext, s::JSON.CommonSerialization,
-						x::IdentifierWrapper)
-	JSON.begin_object(io)
-	JSON.show_pair(io, s, "type", identifer_type(x.wrapped))
-	for fn in x.fns
-		JSON.show_pair(io, s, fn, getfield(x.wrapped, fn))
-	end#for
-	JSON.end_object(io)
-end#function
-# identifier-types ends here
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::matrix-request][matrix-request]]
 import HTTP
 
 export request
 
 """
-    request(::Endpoint; layers)::Tuple
+    request(req::Request{E})::Response{E}
 
-Calls a matrix endpoint and returns a tuple for input to `HTTP.request`
-
-`layers` is passed through to `HTTP.stack` as kwargs to specify which layers to
-include.
+Makes the request contained in `req` using HTTP.jl and returns `Response`.
 """
-function request(req::Endpoint, body; layers...)::Tuple{
-    DataType, String, HTTP.URI, HTTP.Headers, Any
-}
-    (HTTP.stack(;layers...), method(req), url(req), headers(req), body)
-end#function
-# matrix-request ends here
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::method][method]]
-function method(req::Endpoint{M})::AbstractString where {M}
-    if M in (:GET, :HEAD, :POST, :PUT, :DELETE, :TRACE, :OPTIONS, :CONNECT, :PATCH)
-        string(M)
-    else
-        throw(DomainError(M, "Not a valid HTTP method."))
-    end#if
-end#function
-# method ends here
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::url][url]]
-import HTTP.URIs: URI
-
-url(req::Endpoint)::URI =
-    URI(; scheme="https", host=req.host, path=path(req), query=query(req))
-query(::Endpoint) = ""
-# url ends here
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::headers][headers]]
-headers(req::Endpoint) = defaultheaders(req)
-defaultheaders(req::Endpoint) = ["Authorization" => "Bearer " * token(req)]
-token(req::Endpoint) = req.token
-# headers ends here
-
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::http-consts][http-consts]]
-const base_path = ["/_matrix", "client", "r0"]
-extend_path(extpath::AbstractVector{<:AbstractString}) =
-    join(vcat(base_path, extpath), "/")
-# http-consts ends here
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::login-request][login-request]]
-struct GetLogin <: Endpoint{:GET}
-    host::String
-end
-
-headers(::GetLogin) = HTTP.Headers()
-path(::GetLogin) = extend_path(["login"])
-# login-request ends here
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::login-request-process][login-request-process]]
-struct GetLoginResponse{S <: AbstractString} <: Response{GetLogin}
-	flows::Vector{S}
-end#struct
-
-import LazyJSON
-const LJ = LazyJSON
-
-function process_response(endpoint::GetLogin, resp::HTTP.Response)
-	GetLoginResponse([i.type for i in LJ.value(String(resp.body)).flows])
-end#function
-# login-request-process ends here
-# [[file:~/repos/MatrixProtocolClient.jl/README.org::post-login][post-login]]
-struct PostLogin <: Endpoint{:POST}
-    host::String
-end
-
-"Return body for `POST` login request"
-function (ep::PostLogin)(logintype::String; identifier=nothing, password=nothing,
-                         token=nothing, device_id=nothing,
-                         initial_device_display_name=nothing)
-    # First check for valid input
-    logintype in ("m.login.password", "m.login.token") || throw(DomainError(logintype))
-    if logintype == "m.login.password" && isnothing(password)
-        throw(DomainError(password,
-                          "Password must be provided for \"m.login.password\""))
-    end#if
-    if logintype == "m.login.token" && isnothing(token)
-        throw(DomainError(token,
-                          "Token must be provided for \"m.login.token\""))
-    end#if
+function request(req::Request{E})::Response{E} where {E <: Endpoint}
+    resp = let e=req.endpoint, b=req.body, p=req.parameters
+        HTTP.request(method(e), url(e, p), headers(e), dump(b))
+    end#let
+    load(resp)
 end#function
 
-headers(::PostLogin) = HTTP.Headers()
-path(::PostLogin) = extend_path(["login"])
-# post-login ends here
+# The ~request~ method above defines the interface that must be defined
+# for each endpoint:
 
-end#module
-# MatrixHTTP.jl:1 ends here
+# - ~method(::Endpoint)~
+# - ~url(::Endpoint, ::Parameters)~ or both ~path(::Endpoint)~ and ~path(::Parameters)~
+# - ~headers(::Endpoint)~
+# - ~dump(::RequestBody)~
+
+# We define a generic implementation of ~method~, ~url~, ~path~,
+# ~headers~, and ~dump~ here so that none will be required for the
+# simplest endpoint cases.
+
+# Method will generally be encoded in the type paramter of ~Endpoint~
+# since it doesn't vary across calls to the same endpoint.
+
+method(::Endpoint{M}) where M = string(M)
+
+# URL will be obtained by combining the base-url with a path specific
+# to each endpoint.
+
+const MATRIX_R0 = "/_matrix/client/r0/"
+
+url(e::Endpoint, p::Parameters) = HTTP.URI(; scheme="https", host=e.host,
+                                           path=MATRIX_R0*path(e), query=path(p))
+
+# Unless otherwise specified, no query parameters are needed.
+
+path(::Parameters) = Pair{String,String}[]
+
+# In general the only header needed is the token which will assume to
+# be stored in a ~token~ field on the ~Endpoint~ object.
+
+headers(e::Endpoint) = ("Authorization" => "Bearer " * e.token, )
+
+# When requesting with =GET=, the request body should be empty. We
+# treat that as the default case for ~<:RequestBody{:GET}~.
+
+dump(::RequestBody{<:Endpoint{:GET}}) = ""
+
+end#module MatrixHTTP
