@@ -14,6 +14,10 @@
 
 module MatrixProtocolClient
 
+export login
+
+import JSON3
+
 # ** Login
 # Start building the client by simply creating a function that logs in
 # to Matrix using a username and password. As we go, we will create
@@ -49,7 +53,10 @@ end
 "Represents a matrix identifier, e.g. m.id.user (UserIdentifier)."
 abstract type Identifier end
 
-# The login requests encapsulates the username or other user
+JSON3.StructType(::Type{<:Identifier}) = JSON3.ObjectType()
+Base.pairs(id::Identifier) = (x => getproperty(id, x) for x in propertynames(id))
+
+# The login request encapsulates the username or other user
 # identifier into an identifier JSON object.
 
 """
@@ -64,10 +71,21 @@ struct UserIdentifier <: Identifier
     user::String
 end
 
+Base.getproperty(id::UserIdentifier, v::Symbol) =
+    v == :type ? "m.id.user" : getfield(id, v)
+Base.propertynames(id::UserIdentifier) = (:user, :type)
+
 # LoginBody has all the required or optional fields for the body of a
 # login request.
 
 abstract type RequestBody end
+
+JSON3.StructType(::Type{<:RequestBody}) = JSON3.ObjectType()
+# TODO: JSON3 requires length to be defined for result of pairs:
+# https://github.com/quinnj/JSON3.jl/issues/37
+# Once issue is resolved, remove collect from this function
+Base.pairs(body::RequestBody) =
+    collect(Iterators.filter(!isnothing∘last , x => getproperty(body, x) for x in propertynames(body)))
 
 struct LoginBody{I<:Identifier} <: RequestBody
     # TODO: this should be an enum limiting type to either
